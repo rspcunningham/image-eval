@@ -6,7 +6,7 @@ from pathlib import Path
 from queue import Empty, Queue
 import sys
 import threading
-from typing import IO, cast
+from typing import IO, Callable, cast
 
 import webview
 
@@ -132,7 +132,8 @@ def run_host(stdin: IO[str], stdout: IO[str]) -> None:
     bridge = _VizBridge(response_writer)
     request_queue: Queue[_HostRequest | None] = Queue()
 
-    window = webview.create_window(
+    create_window = cast(Callable[..., webview.Window | None], webview.create_window)
+    window = create_window(
         title="MTF Calc",
         html="<html><body></body></html>",
         width=1440,

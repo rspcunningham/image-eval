@@ -62,7 +62,7 @@ def load_roi_config(path: str) -> RoiConfig:
             for entry in (_as_object(item) for item in bar_rois_payload)
         },
         norm_rois={
-            cast(NormRegion, region): _deserialize_roi(_as_object(roi_payload))
+            _as_norm_region(region): _deserialize_roi(_as_object(roi_payload))
             for region, roi_payload in norm_rois_payload.items()
         },
     )
@@ -128,3 +128,10 @@ def _as_float(value: object) -> float:
     if not isinstance(value, int | float):
         raise TypeError("Expected number")
     return float(value)
+
+
+def _as_norm_region(value: object) -> NormRegion:
+    region = _as_int(value)
+    if region not in (0, 1):
+        raise ValueError(f"Invalid norm region: {region}")
+    return region

@@ -1,10 +1,18 @@
+# pyright: reportAny=false, reportMissingTypeStubs=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false
+
 import numpy as np
 from collections.abc import Mapping
 from numpy.typing import NDArray
-from scipy.optimize import minimize
-from scipy.signal import find_peaks, savgol_filter
+from typing import Protocol, cast
+from scipy.optimize import minimize as _scipy_minimize
+from scipy.signal import find_peaks as _scipy_find_peaks, savgol_filter as _scipy_savgol_filter
 
 from mtf_calc.models import Dim, FitResult, NormRegion, Profile, Roi
+
+
+class _OptimizeResult(Protocol):
+    x: NDArray[np.float64]
+    success: bool
 
 
 def get_norm(
@@ -53,10 +61,11 @@ def fit(
     norm_rois: Mapping[NormRegion, Roi],
     n_harmonics: int,
 ) -> FitResult:
+    _ = norm_rois
     if n_harmonics < 1:
         raise ValueError("n_harmonics must be at least 1.")
 
-    values = np.asarray(profile.norm_values, dtype=np.float64)
+    values: NDArray[np.float64] = np.asarray(profile.norm_values, dtype=np.float64)
     n = int(values.size)
     if n == 0:
         raise ValueError("Profile is empty.")
@@ -65,19 +74,25 @@ def fit(
     if not np.isfinite(values).all():
         raise ValueError("Profile contains non-finite values.")
 
-    def estimate_period(y: np.ndarray) -> float:
+    def estimate_period(y: NDArray[np.float64]) -> float:
         if y.size < 6:
             return max(float(y.size), 4.0)
 
         window = min(y.size - (1 - y.size % 2), 11)
         if window >= 5:
-            smoothed = savgol_filter(y, window_length=window, polyorder=2, mode="interp")
+            smoothed = cast(
+                NDArray[np.float64],
+                _scipy_savgol_filter(y, window_length=window, polyorder=2, mode="interp"),
+            )
         else:
             smoothed = y
 
         gradient = np.abs(np.diff(smoothed))
         prominence = max(float(np.std(gradient)), 1e-6)
-        peaks, _ = find_peaks(gradient, prominence=prominence)
+        peaks, _ = cast(
+            tuple[NDArray[np.int64], dict[str, NDArray[np.float64]]],
+            _scipy_find_peaks(gradient, prominence=prominence),
+        )
 
         if peaks.size >= 2:
             return float(max(2.0 * np.median(np.diff(peaks)), 4.0))
@@ -91,7 +106,13 @@ def fit(
             return max(centered.size / 3.0, 4.0)
         return float(max(np.argmax(search) + 2, 4.0))
 
-    def design_matrix(x: np.ndarray, *, period: float, phase: float, harmonic_count: int) -> np.ndarray:
+    def design_matrix(
+        x: NDArray[np.float64],
+        *,
+        period: float,
+        phase: float,
+        harmonic_count: int,
+    ) -> NDArray[np.float64]:
         omega = 2.0 * np.pi / period
         columns = [x, np.ones_like(x)]
         for index in range(harmonic_count):
@@ -100,21 +121,22 @@ def fit(
         return np.column_stack(columns)
 
     def solve_linear_coeffs(
-        x: np.ndarray,
-        y: np.ndarray,
+        x: NDArray[np.float64],
+        y: NDArray[np.float64],
         *,
         period: float,
         phase: float,
         harmonic_count: int,
-    ) -> tuple[np.ndarray, np.ndarray, float]:
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], float]:
         design = design_matrix(x, period=period, phase=phase, harmonic_count=harmonic_count)
         coeffs, *_ = np.linalg.lstsq(design, y, rcond=None)
+        coeffs = cast(NDArray[np.float64], coeffs)
         fitted = design @ coeffs
         residual = float(np.sum(np.square(fitted - y)))
         return coeffs, fitted, residual
 
     x = np.arange(n, dtype=np.float64)
-    y = values.astype(np.float64, copy=False)
+    y: NDArray[np.float64] = values.astype(np.float64, copy=False)
 
     period0 = estimate_period(y)
     period0 = np.clip(period0, 4.0, max(float(y.size) * 1.5, 6.0))
@@ -143,7 +165,7 @@ def fit(
                 best_phase = float(phase)
                 best_coeffs = coeffs
 
-    def objective(params: np.ndarray) -> float:
+    def objective(params: NDArray[np.float64]) -> float:
         return solve_linear_coeffs(
             x,
             y,
@@ -152,12 +174,15 @@ def fit(
             harmonic_count=n_harmonics,
         )[2]
 
-    optimized = minimize(
+    optimized = cast(
+        _OptimizeResult,
+        _scipy_minimize(
         objective,
         x0=np.array([best_period, best_phase], dtype=np.float64),
         method="L-BFGS-B",
         bounds=[(min_period, max_period), (-np.pi, np.pi)],
         options={"maxiter": 300},
+        ),
     )
 
     period_px = float(optimized.x[0]) if optimized.success else best_period
