@@ -26,11 +26,13 @@ const imageCtx = imageCanvas.getContext("2d");
 const overlayCtx = overlayCanvas.getContext("2d");
 const zoomLabel = $("zoom-label");
 const modeLabel = $("mode-label");
+const toolTitle = $("tool-title");
 const interactionCopy = $("interaction-copy");
 const selectionMeta = $("selection-meta");
 const acceptButton = $("btn-accept");
 const drawButton = $("btn-draw");
 const panButton = $("btn-pan");
+const cancelButton = $("btn-cancel");
 
 async function init() {
   await waitForPywebview();
@@ -49,6 +51,7 @@ async function init() {
   imageCtx.drawImage(state.image, 0, 0, state.config.cols, state.config.rows);
 
   bindEvents();
+  applyToolConfig();
   fitToView();
   renderAll();
 }
@@ -100,7 +103,7 @@ function bindEvents() {
   $("btn-1x").addEventListener("click", setOneToOne);
   $("btn-draw").addEventListener("click", () => setMode("draw"));
   $("btn-pan").addEventListener("click", () => setMode("pan"));
-  $("btn-cancel").addEventListener("click", cancelSelection);
+  cancelButton.addEventListener("click", cancelSelection);
   acceptButton.addEventListener("click", submitSelection);
 
   canvasContainer.addEventListener("wheel", handleWheel, { passive: false });
@@ -110,6 +113,31 @@ function bindEvents() {
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("keyup", handleKeyUp);
   window.addEventListener("resize", fitToView);
+}
+
+function applyToolConfig() {
+  const tool = state.config.tool ?? "select-roi";
+
+  if (tool === "show-anchor") {
+    state.mode = "pan";
+    toolTitle.textContent = "Anchor Preview";
+    drawButton.hidden = true;
+    modeLabel.hidden = true;
+    acceptButton.disabled = false;
+    acceptButton.textContent = "Done";
+    cancelButton.textContent = "Close";
+    interactionCopy.textContent = "Inspect the detected anchor. Use the mouse wheel to zoom and drag to pan. Press Enter, Escape, or Close when finished.";
+    updateAnchorMeta();
+    return;
+  }
+
+  toolTitle.textContent = "ROI Picker";
+  drawButton.hidden = false;
+  modeLabel.hidden = false;
+  acceptButton.textContent = "Accept";
+  cancelButton.textContent = "Cancel";
+  setMode("draw");
+  updateSelectionMeta();
 }
 
 function setMode(mode) {
@@ -171,6 +199,19 @@ function handleWheel(event) {
 }
 
 function handleMouseDown(event) {
+  if (state.config.tool === "show-anchor") {
+    if (event.button !== 0 && event.button !== 1) {
+      return;
+    }
+
+    if (shouldPan(event)) {
+      state.panning = true;
+      state.panStartX = event.clientX - state.display.panX;
+      state.panStartY = event.clientY - state.display.panY;
+    }
+    return;
+  }
+
   if (event.button !== 0 && event.button !== 1) {
     return;
   }
@@ -217,6 +258,10 @@ function handleMouseMove(event) {
     return;
   }
 
+  if (state.config.tool === "show-anchor") {
+    return;
+  }
+
   if (state.config.sizeRef && state.mode === "draw") {
     state.drawCurrent = fixedBounds(pixel.x, pixel.y, state.config.sizeRef.width, state.config.sizeRef.height);
     renderAll();
@@ -254,6 +299,11 @@ function handleKeyDown(event) {
   }
 
   if (event.key === "Enter") {
+    if (state.config.tool === "show-anchor") {
+      completeView();
+      return;
+    }
+
     if (state.selection) {
       submitSelection();
     }
@@ -291,6 +341,12 @@ function renderAll() {
   zoomLabel.textContent = `${state.display.zoom.toFixed(2)}x`;
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
+  if (state.config.tool === "show-anchor" && state.config.anchor) {
+    drawAnchorOverlay(state.config.anchor);
+    acceptButton.disabled = false;
+    return;
+  }
+
   if (state.selection) {
     drawRect(state.selection, "rgba(105, 224, 208, 1)", "rgba(105, 224, 208, 0.18)", 2);
   }
@@ -318,6 +374,39 @@ function drawRect(rect, stroke, fill, lineWidth, dash = []) {
   overlayCtx.setLineDash(dash);
   overlayCtx.fillRect(rect.left, rect.top, rect.width, rect.height);
   overlayCtx.strokeRect(rect.left + 0.5, rect.top + 0.5, rect.width - 1, rect.height - 1);
+  overlayCtx.restore();
+}
+
+function drawAnchorOverlay(anchor) {
+  const roi = anchor.roi;
+  const left = roi.left;
+  const top = roi.top;
+  const right = roi.right;
+  const bottom = roi.bottom;
+  const width = right - left;
+  const height = bottom - top;
+
+  drawRect(
+    { left, top, right, bottom, width, height },
+    "rgba(255, 111, 145, 0.95)",
+    "rgba(255, 111, 145, 0.12)",
+    2,
+  );
+
+  overlayCtx.save();
+  overlayCtx.strokeStyle = "rgba(255, 111, 145, 0.95)";
+  overlayCtx.lineWidth = 2;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(left, top);
+  overlayCtx.lineTo(right, bottom);
+  overlayCtx.moveTo(right, top);
+  overlayCtx.lineTo(left, bottom);
+  overlayCtx.stroke();
+
+  overlayCtx.fillStyle = "rgba(105, 224, 208, 1)";
+  overlayCtx.beginPath();
+  overlayCtx.arc(anchor.centroid.x, anchor.centroid.y, 6, 0, Math.PI * 2);
+  overlayCtx.fill();
   overlayCtx.restore();
 }
 
@@ -372,7 +461,29 @@ function updateSelectionMeta() {
   ].join("<br>");
 }
 
+function updateAnchorMeta() {
+  if (!state.config.anchor) {
+    selectionMeta.textContent = "No anchor data.";
+    return;
+  }
+
+  const { roi, centroid } = state.config.anchor;
+  selectionMeta.innerHTML = [
+    `left ${fmt(roi.left)}`,
+    `top ${fmt(roi.top)}`,
+    `width ${fmt(roi.right - roi.left)}`,
+    `height ${fmt(roi.bottom - roi.top)}`,
+    `centroid x ${fmt(centroid.x)}`,
+    `centroid y ${fmt(centroid.y)}`,
+  ].join("<br>");
+}
+
 async function submitSelection() {
+  if (state.config.tool === "show-anchor") {
+    await completeView();
+    return;
+  }
+
   if (!state.selection) {
     return;
   }
@@ -383,6 +494,10 @@ async function submitSelection() {
     right: state.selection.right,
     bottom: state.selection.bottom,
   });
+}
+
+async function completeView() {
+  await window.pywebview.api.complete_view();
 }
 
 async function cancelSelection() {
