@@ -34,7 +34,12 @@ const panButton = $("btn-pan");
 
 async function init() {
   await waitForPywebview();
-  state.config = await window.pywebview.api.get_config();
+
+  if (typeof window.pywebview?.api?.load_config !== "function") {
+    throw new Error("pywebview bridge did not expose load_config()");
+  }
+
+  state.config = await window.pywebview.api.load_config();
   state.image = await loadImage(state.config.imageDataUrl);
 
   imageCanvas.width = state.config.cols;
@@ -49,11 +54,35 @@ async function init() {
 }
 
 function waitForPywebview() {
-  if (window.pywebview?.api) {
-    return Promise.resolve();
-  }
   return new Promise((resolve) => {
-    window.addEventListener("pywebviewready", () => resolve(), { once: true });
+    const isReady = () => typeof window.pywebview?.api?.load_config === "function";
+
+    if (isReady()) {
+      resolve();
+      return;
+    }
+
+    let attempts = 0;
+    let intervalId = 0;
+    const finishIfReady = () => {
+      attempts += 1;
+      if (isReady()) {
+        window.clearInterval(intervalId);
+        resolve();
+      }
+    };
+
+    window.addEventListener("pywebviewready", () => {
+      finishIfReady();
+    });
+
+    intervalId = window.setInterval(() => {
+      finishIfReady();
+      if (attempts >= 50) {
+        window.clearInterval(intervalId);
+        resolve();
+      }
+    }, 100);
   });
 }
 
@@ -371,7 +400,7 @@ function fmt(value) {
 init().catch(async (error) => {
   console.error(error);
   alert(error.message);
-  if (window.pywebview?.api) {
+  if (typeof window.pywebview?.api?.cancel === "function") {
     await window.pywebview.api.cancel();
   }
 });

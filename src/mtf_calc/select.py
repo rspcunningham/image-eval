@@ -21,8 +21,9 @@ def select_roi(raw_image: NDArray[np.float32], size_ref: Roi | None = None) -> R
     ui_path = Path(__file__).with_name("ui") / "roi_picker.html"
     window = webview.create_window(
         title="Select ROI",
-        url=ui_path.resolve().as_uri(),
-        js_api=api,
+        # Serve the local UI through pywebview's built-in HTTP server instead of
+        # loading it over file://, which is not well supported by the JS bridge.
+        url=str(ui_path.resolve()),
         width=1440,
         height=920,
         min_size=(960, 640),
@@ -30,7 +31,7 @@ def select_roi(raw_image: NDArray[np.float32], size_ref: Roi | None = None) -> R
     if window is None:
         raise RuntimeError("Failed to create ROI picker window")
     api.attach_window(window)
-
+    _register_bridge(window, api)
     webview.start(debug=False)
 
     roi = api.selected_roi
@@ -53,7 +54,7 @@ class _RoiPickerApi:
     def attach_window(self, window: webview.Window) -> None:
         self._window = window
 
-    def get_config(self) -> Mapping[str, object]:
+    def load_config(self) -> Mapping[str, object]:
         return self._config
 
     def submit_selection(self, payload: dict[str, object]) -> None:
@@ -65,6 +66,16 @@ class _RoiPickerApi:
         self.selected_roi = None
         if self._window is not None:
             self._window.destroy()
+
+
+def _register_bridge(window: webview.Window, api: "_RoiPickerApi") -> None:
+    # `js_api=` produced an empty `window.pywebview.api` on this Cocoa setup,
+    # while `window.expose(...)` exports the functions correctly.
+    window.expose(
+        api.load_config,
+        api.submit_selection,
+        api.cancel,
+    )
 
 
 def _encode_image(raw_image: NDArray[np.float32]) -> str:
