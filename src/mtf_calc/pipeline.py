@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -14,12 +14,29 @@ class StageStatus(str, Enum):
 
 
 class StageMode(str, Enum):
-    RUN = "run"
-    SKIP = "skip"
+    CANVAS = "canvas"
+    FRAME = "frame"
+
+
+@dataclass(frozen=True, slots=True)
+class StageDefinition:
+    name: str
+    title: str
+    mode: StageMode
+
+
+STAGES: tuple[StageDefinition, ...] = (
+    StageDefinition("view", "Image View", StageMode.CANVAS),
+    StageDefinition("anchor", "Anchor Detection", StageMode.CANVAS),
+    StageDefinition("scale", "Scale Identification", StageMode.CANVAS),
+    StageDefinition("bar_rois", "Bar ROI Selection", StageMode.CANVAS),
+    StageDefinition("norm_rois", "Normalization ROIs", StageMode.CANVAS),
+    StageDefinition("stage_6", "Stage 6", StageMode.FRAME),
+    StageDefinition("stage_7", "Stage 7", StageMode.FRAME),
+)
 
 
 class StageInfo(BaseModel):
-    """Serializable snapshot of a stage for the frontend."""
     index: int
     name: str
     title: str
@@ -27,80 +44,66 @@ class StageInfo(BaseModel):
     mode: StageMode
 
 
-class Stage:
-    def __init__(self, name: str, title: str, mode: StageMode = StageMode.RUN) -> None:
-        self.name = name
-        self.title = title
-        self.mode = mode
-        self.status = StageStatus.PENDING
-        self.result: Any = None
+class PipelineState(BaseModel):
+    stages: list[StageInfo]
+    current: int | None
+    has_source: bool
+    is_complete: bool
 
-    def info(self, index: int) -> StageInfo:
-        return StageInfo(
+
+def stage_names() -> list[str]:
+    return [stage.name for stage in STAGES]
+
+
+def stage_index(name: str) -> int:
+    for index, stage in enumerate(STAGES):
+        if stage.name == name:
+            return index
+    raise KeyError(name)
+
+
+def stage_title(name: str) -> str:
+    return STAGES[stage_index(name)].title
+
+
+def stage_mode(name: str) -> StageMode:
+    return STAGES[stage_index(name)].mode
+
+
+def initial_stage_statuses(*, has_source: bool) -> dict[str, StageStatus]:
+    statuses = {stage.name: StageStatus.PENDING for stage in STAGES}
+    if has_source:
+        statuses[STAGES[0].name] = StageStatus.ACTIVE
+    return statuses
+
+
+def current_stage_name(statuses: dict[str, StageStatus], *, has_source: bool) -> str | None:
+    for stage in STAGES:
+        if statuses.get(stage.name) == StageStatus.ACTIVE:
+            return stage.name
+    if not has_source:
+        return STAGES[0].name
+    return None
+
+
+def build_pipeline_state(statuses: dict[str, StageStatus], *, has_source: bool) -> PipelineState:
+    current_name = current_stage_name(statuses, has_source=has_source)
+    current = stage_index(current_name) if current_name is not None else None
+    stages = [
+        StageInfo(
             index=index,
-            name=self.name,
-            title=self.title,
-            status=self.status,
-            mode=self.mode,
+            name=stage.name,
+            title=stage.title,
+            status=statuses.get(stage.name, StageStatus.PENDING),
+            mode=stage.mode,
         )
+        for index, stage in enumerate(STAGES)
+    ]
 
-
-class Pipeline:
-    def __init__(self) -> None:
-        self.stages: list[Stage] = [
-            Stage("anchor", "Anchor Detection"),
-            Stage("scale", "Scale Identification"),
-            Stage("bar_locations", "Bar Locations"),
-            Stage("bar_rois", "Bar ROI Refinement"),
-            Stage("norm_rois", "Normalization ROIs"),
-        ]
-        self._current = 0
-        self.source: Any = None  # loaded numpy array
-
-    @property
-    def current_index(self) -> int:
-        return self._current
-
-    @property
-    def current_stage(self) -> Stage:
-        return self.stages[self._current]
-
-    @property
-    def is_complete(self) -> bool:
-        return self._current >= len(self.stages)
-
-    def info(self) -> list[StageInfo]:
-        return [stage.info(i) for i, stage in enumerate(self.stages)]
-
-    def activate_current(self) -> None:
-        """Mark the current stage as active."""
-        if not self.is_complete:
-            self.current_stage.status = StageStatus.ACTIVE
-
-    def complete_current(self, result: Any = None) -> None:
-        """Complete the current stage and advance."""
-        if self.is_complete:
-            return
-        stage = self.current_stage
-        stage.status = StageStatus.COMPLETE
-        stage.result = result
-        self._current += 1
-        if not self.is_complete:
-            self.activate_current()
-
-    def skip_current(self) -> None:
-        """Skip the current stage and advance."""
-        if self.is_complete:
-            return
-        stage = self.current_stage
-        stage.status = StageStatus.SKIPPED
-        self._current += 1
-        if not self.is_complete:
-            self.activate_current()
-
-    def get_result(self, name: str) -> Any:
-        """Get the result of a completed stage by name."""
-        for stage in self.stages:
-            if stage.name == name:
-                return stage.result
-        return None
+    is_complete = has_source and all(stage.status == StageStatus.COMPLETE for stage in stages)
+    return PipelineState(
+        stages=stages,
+        current=current,
+        has_source=has_source,
+        is_complete=is_complete,
+    )
