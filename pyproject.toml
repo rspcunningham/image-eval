@@ -5,24 +5,18 @@ build-backend = "hatchling.build"
 [project]
 name = "mtf-calc"
 version = "0.1.0"
-description = "MTF measurement calculator"
-requires-python = ">=3.10,<3.14"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115.0",
-    "matplotlib>=3.10.8",
-    "numpy>=2.2.6",
-    "openai-agents>=0.13.5",
-    "openai>=2.30.0",
-    "pillow>=11.0.0",
-    "python-dotenv>=1.2.2",
-    "scipy>=1.15.0",
-    "uvicorn>=0.34.0",
-    "websockets>=16.0",
+    "numpy>=2.4.4",
 ]
 
-[project.scripts]
-mtf-calc = "mtf_calc.server:main"
+[tool.pyright]
+include = ["main.py", "src"]
+extraPaths = ["src"]
 
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/mtf_calc"]
+[dependency-groups]
+dev = [
+    "basedpyright>=1.39.0",
+]
