@@ -5,8 +5,6 @@ Dim: TypeAlias = Literal["X", "Y"]
 ScaleGroup: TypeAlias = Literal[-2, -1, 0, 1, 2, 3, 4, 5, 6, 7]
 Element: TypeAlias = Literal[1, 2, 3, 4, 5, 6]
 NormRegion: TypeAlias = Literal["white", "black"]
-FitResult: TypeAlias = object
-MtfResult: TypeAlias = object
 
 @dataclass
 class BarSection:
@@ -53,6 +51,26 @@ class Anchor:
 
         factor = 1.0 / (3.0 * area_twice)
         return Point(x=centroid_x * factor, y=centroid_y * factor)
+
+@dataclass
+class FitResult:
+    period_px: float
+    phase_rad: float
+    harmonic_amplitudes: list[float]
+    slope: float
+    intercept: float
+
+@dataclass
+class MtfPoint:
+    lp_per_mm: float
+    line_width: float
+    mtf_x: float
+    mtf_y: float
+    mtf_avg: float
+
+
+MtfResult: TypeAlias = list[MtfPoint]
+
 
 @dataclass
 class RoiConfig:
