@@ -144,6 +144,23 @@ function applyToolConfig() {
     return;
   }
 
+  if (tool === "show-rois") {
+    state.mode = "pan";
+    toolTitle.textContent = "Seeded ROI Review";
+    promptPanel.hidden = false;
+    promptCopy.textContent = "Inspect the translated ROIs loaded from roi_config.json before fitting starts.";
+    drawButton.hidden = true;
+    fitButton.hidden = false;
+    oneToOneButton.hidden = false;
+    modeLabel.hidden = true;
+    acceptButton.disabled = false;
+    acceptButton.textContent = "Continue";
+    cancelButton.textContent = "Close";
+    interactionCopy.textContent = "Inspect the translated normalization and bar ROIs. Use the mouse wheel to zoom. Hold Shift and drag to pan. Press Enter, Escape, or Close when finished.";
+    updateRoisMeta();
+    return;
+  }
+
   if (tool === "show-mtf") {
     state.mode = "pan";
     toolTitle.textContent = "MTF Graph";
@@ -353,7 +370,7 @@ function handleKeyDown(event) {
   }
 
   if (event.key === "Enter") {
-    if (state.config.tool === "show-anchor") {
+    if (state.config.tool === "show-anchor" || state.config.tool === "show-rois") {
       completeView();
       return;
     }
@@ -408,6 +425,16 @@ function renderAll() {
 
   if (state.config.tool === "show-anchor" && state.config.anchor) {
     drawAnchorOverlay(state.config.anchor);
+    acceptButton.disabled = false;
+    return;
+  }
+
+  if (state.config.tool === "show-rois") {
+    if (state.config.anchor) {
+      drawAnchorOverlay(state.config.anchor);
+    }
+    drawSeededRois(state.config.normRois, "norm");
+    drawSeededRois(state.config.barRois, "bar");
     acceptButton.disabled = false;
     return;
   }
@@ -472,6 +499,58 @@ function drawAnchorOverlay(anchor) {
   overlayCtx.beginPath();
   overlayCtx.arc(anchor.centroid.x, anchor.centroid.y, 6, 0, Math.PI * 2);
   overlayCtx.fill();
+  overlayCtx.restore();
+}
+
+function drawSeededRois(rois, kind) {
+  if (!Array.isArray(rois)) {
+    return;
+  }
+
+  for (const entry of rois) {
+    const roi = entry?.roi;
+    if (!roi) {
+      continue;
+    }
+
+    const rect = {
+      left: Number(roi.left),
+      top: Number(roi.top),
+      right: Number(roi.right),
+      bottom: Number(roi.bottom),
+      width: Number(roi.right) - Number(roi.left),
+      height: Number(roi.bottom) - Number(roi.top),
+    };
+
+    const isNorm = kind === "norm";
+    drawRect(
+      rect,
+      isNorm ? "rgba(255, 206, 84, 0.98)" : "rgba(105, 224, 208, 0.96)",
+      isNorm ? "rgba(255, 206, 84, 0.16)" : "rgba(105, 224, 208, 0.10)",
+      isNorm ? 2.5 : 1.75,
+    );
+    drawRoiLabel(rect, typeof entry.label === "string" ? entry.label : "ROI", isNorm);
+  }
+}
+
+function drawRoiLabel(rect, label, isNorm) {
+  overlayCtx.save();
+  overlayCtx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  overlayCtx.textBaseline = "top";
+  const textWidth = overlayCtx.measureText(label).width;
+  const paddingX = 6;
+  const labelHeight = 18;
+  const labelWidth = textWidth + paddingX * 2;
+  const left = clamp(rect.left, 0, Math.max(0, overlayCanvas.width - labelWidth));
+  const top = rect.top > labelHeight + 4 ? rect.top - labelHeight - 4 : Math.min(rect.bottom + 4, Math.max(0, overlayCanvas.height - labelHeight));
+
+  overlayCtx.fillStyle = isNorm ? "rgba(255, 206, 84, 0.92)" : "rgba(18, 28, 34, 0.88)";
+  overlayCtx.strokeStyle = isNorm ? "rgba(255, 206, 84, 1)" : "rgba(105, 224, 208, 0.95)";
+  overlayCtx.lineWidth = 1;
+  overlayCtx.fillRect(left, top, labelWidth, labelHeight);
+  overlayCtx.strokeRect(left + 0.5, top + 0.5, labelWidth - 1, labelHeight - 1);
+  overlayCtx.fillStyle = isNorm ? "rgba(26, 18, 0, 0.95)" : "rgba(238, 248, 247, 0.98)";
+  overlayCtx.fillText(label, left + paddingX, top + 3);
   overlayCtx.restore();
 }
 
@@ -541,6 +620,19 @@ function updateAnchorMeta() {
     `centroid x ${fmt(centroid.x)}`,
     `centroid y ${fmt(centroid.y)}`,
   ].join("<br>");
+}
+
+function updateRoisMeta() {
+  const normCount = Array.isArray(state.config.normRois) ? state.config.normRois.length : 0;
+  const barCount = Array.isArray(state.config.barRois) ? state.config.barRois.length : 0;
+  const anchor = state.config.anchor;
+
+  selectionMeta.innerHTML = [
+    `${normCount} normalization ROI${normCount === 1 ? "" : "s"}`,
+    `${barCount} bar ROI${barCount === 1 ? "" : "s"}`,
+    anchor ? `anchor centroid x ${fmt(anchor.centroid.x)}` : null,
+    anchor ? `anchor centroid y ${fmt(anchor.centroid.y)}` : null,
+  ].filter(Boolean).join("<br>");
 }
 
 function renderMtfGraph() {
@@ -643,6 +735,11 @@ function renderMtfTable() {
 
 async function submitSelection() {
   if (state.config.tool === "show-anchor") {
+    await completeView();
+    return;
+  }
+
+  if (state.config.tool === "show-rois") {
     await completeView();
     return;
   }

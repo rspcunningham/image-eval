@@ -20,7 +20,7 @@ This project loads a grayscale source image, finds a reference anchor square, le
 ## Project Layout
 
 - [`main.py`](main.py): initial interactive workflow that captures normalization and bar ROIs.
-- [`auto.py`](auto.py): non-interactive workflow that loads saved ROI selections from disk.
+- [`auto.py`](auto.py): saved-config workflow that loads ROI selections from disk and previews the translated ROIs before fitting.
 - [`src/mtf_calc/anchor.py`](src/mtf_calc/anchor.py): anchor-square detection and refinement.
 - [`src/mtf_calc/select.py`](src/mtf_calc/select.py): ROI-selection wrapper.
 - [`src/mtf_calc/profiles.py`](src/mtf_calc/profiles.py): profile extraction and harmonic fitting.
@@ -89,7 +89,7 @@ The selections are saved to `roi_config.json`.
 uv run python auto.py
 ```
 
-The saved ROI geometry will be loaded from `roi_config.json` and shifted using the newly detected anchor position before profile fitting and MTF computation.
+The saved ROI geometry will be loaded from `roi_config.json`, shifted using the newly detected anchor position, previewed in a read-only ROI review window, and then used for profile fitting and MTF computation.
 
 ## Input Expectations
 

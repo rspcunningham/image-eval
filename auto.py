@@ -45,19 +45,28 @@ def fit_profiles_from_rois(
 
 
 def main() -> None:
-    raw_image = mtf_calc.io.load_source(SOURCE_PATH)
-    anchor = mtf_calc.anchor.find_anchor(raw_image)
-    roi_config = mtf_calc.io.load_roi_config(ROI_CONFIG_PATH)
-    bar_rois, norm_rois = mtf_calc.io.translate_rois_from_anchor(roi_config, anchor)
+    try:
+        raw_image = mtf_calc.io.load_source(SOURCE_PATH)
+        anchor = mtf_calc.anchor.find_anchor(raw_image)
+        roi_config = mtf_calc.io.load_roi_config(ROI_CONFIG_PATH)
+        bar_rois, norm_rois = mtf_calc.io.translate_rois_from_anchor(roi_config, anchor)
+        mtf_calc.viz.show_rois(
+            raw_image,
+            anchor=anchor,
+            norm_rois=norm_rois,
+            bar_rois=bar_rois,
+        )
 
-    fit_results = fit_profiles_from_rois(
-        raw_image,
-        scale_groups=list(roi_config.scale_groups),
-        bar_rois=bar_rois,
-        norm_rois=norm_rois,
-    )
-    mtf_result = mtf_calc.mtf.compute(fit_results)
-    mtf_calc.viz.show_mtf_graph(mtf_result)
+        fit_results = fit_profiles_from_rois(
+            raw_image,
+            scale_groups=list(roi_config.scale_groups),
+            bar_rois=bar_rois,
+            norm_rois=norm_rois,
+        )
+        mtf_result = mtf_calc.mtf.compute(fit_results)
+        mtf_calc.viz.show_mtf_graph(mtf_result)
+    finally:
+        mtf_calc.viz.close()
 
 
 if __name__ == "__main__":

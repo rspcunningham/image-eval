@@ -14,10 +14,11 @@ from numpy.typing import NDArray
 from mtf_calc._roi_tools import (
     build_select_roi_config,
     build_show_anchor_config,
+    build_show_rois_config,
     build_show_mtf_config,
     roi_from_payload,
 )
-from mtf_calc.models import Anchor, MtfResult
+from mtf_calc.models import Anchor, BarSection, MtfResult, NormRegion
 from mtf_calc.models import Roi
 
 
@@ -61,6 +62,24 @@ class _VizHostClient:
             payload=build_show_anchor_config(raw_image, anchor),
         )
 
+    def show_rois(
+        self,
+        raw_image: NDArray[np.float32],
+        *,
+        anchor: Anchor,
+        norm_rois: dict[NormRegion, Roi],
+        bar_rois: dict[BarSection, Roi],
+    ) -> None:
+        _ = self._request(
+            command="show_rois",
+            payload=build_show_rois_config(
+                raw_image,
+                anchor=anchor,
+                norm_rois=norm_rois,
+                bar_rois=bar_rois,
+            ),
+        )
+
     def show_mtf_graph(self, mtf_result: MtfResult) -> None:
         _ = self._request(
             command="show_mtf",
@@ -68,7 +87,7 @@ class _VizHostClient:
         )
 
     def close(self) -> None:
-        self._shutdown(wait_timeout=5.0)
+        self._shutdown(wait_timeout=0.1)
 
     def close_for_atexit(self) -> None:
         self._shutdown(wait_timeout=0.1)
@@ -82,6 +101,15 @@ class _VizHostClient:
             if self._process.poll() is None:
                 self._send_message({"id": 0, "command": "shutdown", "payload": {}})
                 _ = self._process.wait(timeout=wait_timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                self._process.terminate()
+                _ = self._process.wait(timeout=0.1)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                _ = self._process.wait(timeout=0.1)
+            except Exception:
+                return
         except BaseException:
             try:
                 self._process.terminate()
@@ -164,6 +192,21 @@ def select_roi(
 
 def show_anchor(raw_image: NDArray[np.float32], anchor: Anchor) -> None:
     _get_client().show_anchor(raw_image, anchor)
+
+
+def show_rois(
+    raw_image: NDArray[np.float32],
+    *,
+    anchor: Anchor,
+    norm_rois: dict[NormRegion, Roi],
+    bar_rois: dict[BarSection, Roi],
+) -> None:
+    _get_client().show_rois(
+        raw_image,
+        anchor=anchor,
+        norm_rois=norm_rois,
+        bar_rois=bar_rois,
+    )
 
 
 def close() -> None:

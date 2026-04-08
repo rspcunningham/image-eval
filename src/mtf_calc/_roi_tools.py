@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
-from mtf_calc.models import Anchor, Point, Roi
+from mtf_calc.models import Anchor, BarSection, NormRegion, Point, Roi
 from mtf_calc.models import MtfResult
 
 
@@ -40,6 +40,47 @@ def build_show_anchor_config(raw_image: NDArray[np.float32], anchor: Anchor) -> 
                 "y": float(anchor.centroid.y),
             },
         },
+    }
+
+
+def build_show_rois_config(
+    raw_image: NDArray[np.float32],
+    *,
+    anchor: Anchor,
+    norm_rois: dict[NormRegion, Roi],
+    bar_rois: dict[BarSection, Roi],
+) -> dict[str, object]:
+    return {
+        "tool": "show-rois",
+        "rows": cast(int, raw_image.shape[0]),
+        "cols": cast(int, raw_image.shape[1]),
+        "imageDataUrl": _encode_image(raw_image),
+        "anchor": {
+            "roi": roi_to_payload(anchor.roi),
+            "centroid": {
+                "x": float(anchor.centroid.x),
+                "y": float(anchor.centroid.y),
+            },
+        },
+        "normRois": [
+            {
+                "label": "Black norm" if region == 0 else "White norm",
+                "kind": "norm",
+                "roi": roi_to_payload(roi),
+            }
+            for region, roi in sorted(norm_rois.items())
+        ],
+        "barRois": [
+            {
+                "label": f"G{section.group} E{section.element} {section.dim}",
+                "kind": "bar",
+                "roi": roi_to_payload(roi),
+            }
+            for section, roi in sorted(
+                bar_rois.items(),
+                key=lambda item: (item[0].group, item[0].element, item[0].dim),
+            )
+        ],
     }
 
 

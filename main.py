@@ -85,29 +85,32 @@ def fit_profiles_from_rois(
 
 
 def main() -> None:
-    raw_image = mtf_calc.io.load_source(SOURCE_PATH)
-    anchor = mtf_calc.anchor.find_anchor(raw_image)
-    if SHOW_ANCHOR_PREVIEW:
-        mtf_calc.viz.show_anchor(raw_image, anchor)
+    try:
+        raw_image = mtf_calc.io.load_source(SOURCE_PATH)
+        anchor = mtf_calc.anchor.find_anchor(raw_image)
+        if SHOW_ANCHOR_PREVIEW:
+            mtf_calc.viz.show_anchor(raw_image, anchor)
 
-    norm_rois = select_normalization_rois(raw_image)
-    bar_rois = select_bar_rois(raw_image, scale_groups=list(DEFAULT_SCALE_GROUPS))
-    roi_config = RoiConfig(
-        anchor=anchor,
-        scale_groups=list(DEFAULT_SCALE_GROUPS),
-        bar_rois=bar_rois,
-        norm_rois=norm_rois,
-    )
-    mtf_calc.io.save_roi_config(roi_config, ROI_CONFIG_PATH)
+        norm_rois = select_normalization_rois(raw_image)
+        bar_rois = select_bar_rois(raw_image, scale_groups=list(DEFAULT_SCALE_GROUPS))
+        roi_config = RoiConfig(
+            anchor=anchor,
+            scale_groups=list(DEFAULT_SCALE_GROUPS),
+            bar_rois=bar_rois,
+            norm_rois=norm_rois,
+        )
+        mtf_calc.io.save_roi_config(roi_config, ROI_CONFIG_PATH)
 
-    fit_results = fit_profiles_from_rois(
-        raw_image,
-        scale_groups=roi_config.scale_groups,
-        bar_rois=bar_rois,
-        norm_rois=norm_rois,
-    )
-    mtf_result = mtf_calc.mtf.compute(fit_results)
-    mtf_calc.viz.show_mtf_graph(mtf_result)
+        fit_results = fit_profiles_from_rois(
+            raw_image,
+            scale_groups=roi_config.scale_groups,
+            bar_rois=bar_rois,
+            norm_rois=norm_rois,
+        )
+        mtf_result = mtf_calc.mtf.compute(fit_results)
+        mtf_calc.viz.show_mtf_graph(mtf_result)
+    finally:
+        mtf_calc.viz.close()
 
 
 if __name__ == "__main__":
