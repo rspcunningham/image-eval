@@ -1,7 +1,9 @@
+# pyright: reportAny=false, reportMissingTypeStubs=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false
 from __future__ import annotations
 
 import atexit
 import json
+from pathlib import Path
 from queue import Empty
 import subprocess
 import sys
@@ -15,7 +17,6 @@ from mtf_calc._roi_tools import (
     build_select_roi_config,
     build_show_anchor_config,
     build_show_rois_config,
-    build_show_mtf_config,
     roi_from_payload,
 )
 from mtf_calc.models import Anchor, BarSection, MtfResult, NormRegion
@@ -78,12 +79,6 @@ class _VizHostClient:
                 norm_rois=norm_rois,
                 bar_rois=bar_rois,
             ),
-        )
-
-    def show_mtf_graph(self, mtf_result: MtfResult) -> None:
-        _ = self._request(
-            command="show_mtf",
-            payload=build_show_mtf_config(mtf_result),
         )
 
     def close(self) -> None:
@@ -241,7 +236,48 @@ def _get_client() -> _VizHostClient:
 _ = atexit.register(_close_for_atexit)
 
 
-def show_mtf_graph(mtf_result: MtfResult) -> None:
+def show_mtf_graph(mtf_result: MtfResult, *, output_path: str | None = None) -> None:
     if not mtf_result:
         raise ValueError("Cannot show MTF graph: the computed Stage 7 result is empty.")
-    _get_client().show_mtf_graph(mtf_result)
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plotted_values: list[float] = []
+
+    for field, label, color in (
+        ("mtf_x", "MTF X", "#0b7285"),
+        ("mtf_y", "MTF Y", "#c92a2a"),
+        ("mtf_avg", "MTF Avg", "#2b8a3e"),
+    ):
+        xs: list[float] = []
+        ys: list[float] = []
+
+        for point in mtf_result:
+            value = getattr(point, field)
+            if value is None:
+                continue
+            xs.append(point.lp_per_mm)
+            ys.append(value)
+
+        if not ys:
+            continue
+
+        plotted_values.extend(ys)
+        ax.plot(xs, ys, marker="o", linewidth=2, label=label, color=color)
+
+    ax.set_title("MTF Response")
+    ax.set_xlabel("Spatial Frequency (lp/mm)")
+    ax.set_ylabel("MTF")
+    ax.grid(True, alpha=0.3)
+    if plotted_values:
+        ax.legend()
+    ax.set_ylim(0.0, max(1.05, max(plotted_values, default=1.0) * 1.1))
+    fig.tight_layout()
+
+    if output_path is not None:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=200, bbox_inches="tight")
+
+    plt.show()
+    plt.close(fig)

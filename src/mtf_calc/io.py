@@ -1,9 +1,20 @@
+import csv
 import json
 import numpy as np
 from typing import cast
 from numpy.typing import NDArray
 
-from mtf_calc.models import Anchor, BarSection, Dim, NormRegion, Point, Roi, RoiConfig, ScaleGroup
+from mtf_calc.models import (
+    Anchor,
+    BarSection,
+    Dim,
+    MtfResult,
+    NormRegion,
+    Point,
+    Roi,
+    RoiConfig,
+    ScaleGroup,
+)
 
 def load_source(path: str) -> NDArray[np.float32]:
     return cast(NDArray[np.float32], np.load(path))
@@ -85,6 +96,22 @@ def translate_rois_from_anchor(
             for region, roi in config.norm_rois.items()
         },
     )
+
+
+def save_mtf_result_csv(mtf_result: MtfResult, path: str) -> None:
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["lp_per_mm", "line_width", "mtf_x", "mtf_y", "mtf_avg"])
+        for point in mtf_result:
+            writer.writerow(
+                [
+                    point.lp_per_mm,
+                    point.line_width,
+                    point.mtf_x,
+                    point.mtf_y,
+                    point.mtf_avg,
+                ]
+            )
 
 
 def _serialize_roi(roi: Roi) -> dict[str, object]:
