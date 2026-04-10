@@ -19,8 +19,7 @@ This project loads a grayscale source image, finds a reference anchor square, le
 
 ## Project Layout
 
-- [`main.py`](main.py): initial interactive workflow that captures normalization and bar ROIs.
-- [`auto.py`](auto.py): saved-config workflow that loads ROI selections from disk and previews the translated ROIs before fitting.
+- [`main.py`](main.py): the single interactive workflow. It can start fresh or reuse and extend a saved ROI config depending on `ROI_CONFIG_PATH`.
 - [`src/mtf_calc/anchor.py`](src/mtf_calc/anchor.py): anchor-square detection and refinement.
 - [`src/mtf_calc/select.py`](src/mtf_calc/select.py): ROI-selection wrapper.
 - [`src/mtf_calc/profiles.py`](src/mtf_calc/profiles.py): profile extraction and harmonic fitting.
@@ -45,26 +44,18 @@ uv sync
 
 ## Running
 
-Run the initial interactive workflow with:
+Run the workflow with:
 
 ```bash
 uv run python main.py
 ```
 
-Run the saved-config workflow with:
-
-```bash
-uv run python auto.py
-```
-
-Both example scripts expose a few module-level constants near the top of the file:
+The script is configured by editing a few module-level constants near the top of the file:
 
 - `SOURCE_PATH`: source `.npy` image to analyze.
-- `ROI_CONFIG_PATH`: path used to save and reload ROI selections.
-- `DEFAULT_SCALE_GROUPS`: USAF groups to analyze in `main.py`.
+- `ROI_CONFIG_PATH`: path used to save and reload ROI selections. Set this to a falsy value to start with no saved ROIs.
+- `DEFAULT_SCALE_GROUPS`: USAF groups to analyze for the current run.
 - `DEFAULT_HARMONICS`: odd-harmonic count used by the profile fit.
-
-[`main.py`](main.py) also exposes `SHOW_ANCHOR_PREVIEW` for an optional anchor overlay before ROI selection.
 
 ## Typical Workflow
 
@@ -86,10 +77,20 @@ The selections are saved to `roi_config.json`.
 ### Later runs: reuse saved ROIs
 
 ```bash
-uv run python auto.py
+uv run python main.py
 ```
 
-The saved ROI geometry will be loaded from `roi_config.json`, shifted using the newly detected anchor position, previewed in a read-only ROI review window, and then used for profile fitting and MTF computation.
+If `ROI_CONFIG_PATH` points to an existing config, the saved ROI geometry will be loaded from that file, shifted using the newly detected anchor position, and reused for any matching sections. Missing normalization ROIs or missing bar ROIs for newly requested groups will be collected interactively and saved back to the same config.
+
+### Start fresh without loading a saved config
+
+Set `ROI_CONFIG_PATH = ""` in [`main.py`](main.py) and run:
+
+```bash
+uv run python main.py
+```
+
+This skips config loading and collects every ROI from scratch.
 
 ## Input Expectations
 
@@ -120,12 +121,12 @@ uv run basedpyright
 Basic syntax check:
 
 ```bash
-uv run python -m py_compile main.py auto.py src/mtf_calc/*.py
+uv run python -m py_compile main.py src/mtf_calc/*.py
 ```
 
 ## Current Limitations
 
-- The scripts are still configured by editing module-level constants; there is no CLI yet.
+- The script is configured by editing module-level constants; there is no CLI.
 - Input loading is currently limited to NumPy `.npy` arrays.
 - ROI selection is interactive and requires the visualization host UI.
 - `roi_config.json` is local workflow state and is not tracked in git by default.
