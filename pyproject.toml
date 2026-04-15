@@ -16,6 +16,12 @@ dependencies = [
     "scipy>=1.16.3",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/mtf_calc",
+    "src/viewer",
+]
+
 [tool.pyright]
 include = ["main.py", "src"]
 extraPaths = ["src"]

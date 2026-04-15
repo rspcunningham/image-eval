@@ -22,8 +22,6 @@ const state = {
 const canvasContainer = $("canvas-container");
 const imageCanvas = $("image-canvas");
 const overlayCanvas = $("overlay-canvas");
-const mtfView = $("mtf-view");
-const mtfSvg = $("mtf-svg");
 const imageCtx = imageCanvas.getContext("2d");
 const overlayCtx = overlayCanvas.getContext("2d");
 const zoomLabel = $("zoom-label");
@@ -33,8 +31,6 @@ const promptPanel = $("prompt-panel");
 const promptCopy = $("prompt-copy");
 const interactionCopy = $("interaction-copy");
 const selectionMeta = $("selection-meta");
-const mtfTablePanel = $("mtf-table-panel");
-const mtfTable = $("mtf-table");
 const acceptButton = $("btn-accept");
 const drawButton = $("btn-draw");
 const panButton = $("btn-pan");
@@ -161,28 +157,6 @@ function applyToolConfig() {
     return;
   }
 
-  if (tool === "show-mtf") {
-    state.mode = "pan";
-    toolTitle.textContent = "MTF Graph";
-    promptPanel.hidden = false;
-    promptCopy.textContent = "Inspect the computed MTF response for the fitted X and Y bar profiles.";
-    drawButton.hidden = true;
-    panButton.hidden = true;
-    fitButton.hidden = true;
-    oneToOneButton.hidden = true;
-    modeLabel.hidden = true;
-    zoomLabel.hidden = true;
-    acceptButton.disabled = false;
-    acceptButton.textContent = "Done";
-    cancelButton.textContent = "Close";
-    interactionCopy.textContent = "Review the plotted X, Y, and average curves. Press Enter, Escape, or Close when finished.";
-    selectionMeta.textContent = `${state.config.points?.length ?? 0} MTF point${(state.config.points?.length ?? 0) === 1 ? "" : "s"} loaded.`;
-    mtfTablePanel.hidden = false;
-    renderMtfGraph();
-    renderMtfTable();
-    return;
-  }
-
   toolTitle.textContent = "ROI Picker";
   promptPanel.hidden = false;
   promptCopy.textContent = resolvePromptCopy();
@@ -192,7 +166,6 @@ function applyToolConfig() {
   oneToOneButton.hidden = false;
   modeLabel.hidden = false;
   zoomLabel.hidden = false;
-  mtfTablePanel.hidden = true;
   acceptButton.textContent = "Accept";
   cancelButton.textContent = "Cancel";
   setMode("draw");
@@ -407,17 +380,6 @@ function shouldPan(event) {
 }
 
 function renderAll() {
-  if (state.config.tool === "show-mtf") {
-    imageCanvas.hidden = true;
-    overlayCanvas.hidden = true;
-    mtfView.hidden = false;
-    acceptButton.disabled = false;
-    return;
-  }
-
-  imageCanvas.hidden = false;
-  overlayCanvas.hidden = false;
-  mtfView.hidden = true;
   applyTransform(imageCanvas);
   applyTransform(overlayCanvas);
   zoomLabel.textContent = `${state.display.zoom.toFixed(2)}x`;
@@ -635,104 +597,6 @@ function updateRoisMeta() {
   ].filter(Boolean).join("<br>");
 }
 
-function renderMtfGraph() {
-  const points = Array.isArray(state.config.points) ? state.config.points : [];
-  if (!points.length) {
-    mtfSvg.innerHTML = "";
-    return;
-  }
-
-  const hasValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value));
-  const plottedYs = points.flatMap((point) => [point.mtfX, point.mtfY, point.mtfAvg].filter(hasValue).map(Number));
-  if (!plottedYs.length) {
-    mtfSvg.innerHTML = "";
-    return;
-  }
-
-  const width = 960;
-  const height = 560;
-  const left = 78;
-  const right = 24;
-  const top = 26;
-  const bottom = 54;
-  const plotWidth = width - left - right;
-  const plotHeight = height - top - bottom;
-  const xs = points.map((point) => Number(point.lpPerMm));
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(0, ...plottedYs);
-  const maxY = Math.max(1, ...plottedYs);
-  const xSpan = Math.max(maxX - minX, 1e-6);
-  const ySpan = Math.max(maxY - minY, 1e-6);
-  const xAt = (value) => left + (((value - minX) / xSpan) * plotWidth);
-  const yAt = (value) => top + ((1 - ((value - minY) / ySpan)) * plotHeight);
-  const fmt = (value, digits = 2) => Number(value).toFixed(digits);
-  const yTicks = Array.from({ length: 6 }, (_, index) => minY + ((index / 5) * ySpan));
-  const xTicks = points.map((point) => Number(point.lpPerMm));
-  const polyline = (key) => points
-    .filter((point) => hasValue(point[key]))
-    .map((point) => `${fmt(xAt(Number(point.lpPerMm)))},${fmt(yAt(Number(point[key])))}`)
-    .join(" ");
-  const circles = (key, color) => points
-    .filter((point) => hasValue(point[key]))
-    .map((point) => `
-      <circle cx="${fmt(xAt(Number(point.lpPerMm)))}" cy="${fmt(yAt(Number(point[key])))}" r="4" fill="${color}" />
-    `)
-    .join("");
-  const xLine = polyline("mtfX");
-  const yLine = polyline("mtfY");
-  const avgLine = polyline("mtfAvg");
-
-  mtfSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  mtfSvg.innerHTML = `
-    <rect x="0" y="0" width="${width}" height="${height}" fill="transparent" />
-    ${yTicks.map((value) => `
-      <g>
-        <line x1="${left}" y1="${fmt(yAt(value))}" x2="${width - right}" y2="${fmt(yAt(value))}" stroke="rgba(255,255,255,0.12)" stroke-dasharray="5 7" />
-        <text x="${left - 12}" y="${fmt(yAt(value) + 4)}" text-anchor="end" fill="#8c98a5" font-size="12">${fmt(value)}</text>
-      </g>
-    `).join("")}
-    ${xTicks.map((value) => `
-      <g>
-        <line x1="${fmt(xAt(value))}" y1="${top}" x2="${fmt(xAt(value))}" y2="${height - bottom}" stroke="rgba(255,255,255,0.06)" />
-        <text x="${fmt(xAt(value))}" y="${height - bottom + 22}" text-anchor="middle" fill="#8c98a5" font-size="12">${fmt(value)}</text>
-      </g>
-    `).join("")}
-    <line x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}" stroke="#eaf0f4" stroke-width="1.5" />
-    <line x1="${left}" y1="${top}" x2="${left}" y2="${height - bottom}" stroke="#eaf0f4" stroke-width="1.5" />
-    <text x="${width / 2}" y="${height - 12}" text-anchor="middle" fill="#8c98a5" font-size="13">Spatial Frequency (lp/mm)</text>
-    <text x="24" y="${height / 2}" text-anchor="middle" fill="#8c98a5" font-size="13" transform="rotate(-90 24 ${height / 2})">MTF</text>
-    ${xLine ? `<polyline fill="none" stroke="#69e0d0" stroke-width="3" points="${xLine}" />` : ""}
-    ${yLine ? `<polyline fill="none" stroke="#ff8e82" stroke-width="3" points="${yLine}" />` : ""}
-    ${avgLine ? `<polyline fill="none" stroke="#9ef3e7" stroke-width="2.5" stroke-dasharray="10 7" points="${avgLine}" />` : ""}
-    ${circles("mtfX", "#69e0d0")}
-    ${circles("mtfY", "#ff8e82")}
-    ${circles("mtfAvg", "#9ef3e7")}
-  `;
-}
-
-function renderMtfTable() {
-  const points = Array.isArray(state.config.points) ? state.config.points : [];
-  if (!points.length) {
-    mtfTable.textContent = "No MTF points were available.";
-    return;
-  }
-
-  const rows = [
-    `<div class="sidebar__table-row sidebar__table-row--head"><span>lp/mm</span><span>um</span><span>X</span><span>Y</span><span>Avg</span></div>`,
-    ...points.map((point) => `
-      <div class="sidebar__table-row">
-        <span>${Number(point.lpPerMm).toFixed(4)}</span>
-        <span>${Number(point.lineWidth).toFixed(4)}</span>
-        <span>${point.mtfX === null || point.mtfX === undefined ? " -" : Number(point.mtfX).toFixed(4)}</span>
-        <span>${point.mtfY === null || point.mtfY === undefined ? " -" : Number(point.mtfY).toFixed(4)}</span>
-        <span>${point.mtfAvg === null || point.mtfAvg === undefined ? " -" : Number(point.mtfAvg).toFixed(4)}</span>
-      </div>
-    `),
-  ];
-  mtfTable.innerHTML = rows.join("");
-}
-
 async function submitSelection() {
   if (state.config.tool === "show-anchor") {
     await completeView();
@@ -740,11 +604,6 @@ async function submitSelection() {
   }
 
   if (state.config.tool === "show-rois") {
-    await completeView();
-    return;
-  }
-
-  if (state.config.tool === "show-mtf") {
     await completeView();
     return;
   }
