@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import base64
-import io
 from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
-from PIL import Image
 
 from mtf_calc.models import Anchor, BarSection, NormRegion, Point, Roi
 
@@ -20,7 +18,6 @@ def build_select_roi_config(
         "tool": "select-roi",
         "rows": cast(int, raw_image.shape[0]),
         "cols": cast(int, raw_image.shape[1]),
-        "imageDataUrl": _encode_image(raw_image),
         "rawImage": _encode_raw_image(raw_image),
         "sizeRef": _serialize_size_ref(size_ref),
         "prompt": prompt,
@@ -32,7 +29,6 @@ def build_show_anchor_config(raw_image: NDArray[np.float32], anchor: Anchor) -> 
         "tool": "show-anchor",
         "rows": cast(int, raw_image.shape[0]),
         "cols": cast(int, raw_image.shape[1]),
-        "imageDataUrl": _encode_image(raw_image),
         "rawImage": _encode_raw_image(raw_image),
         "anchor": {
             "roi": roi_to_payload(anchor.roi),
@@ -55,7 +51,6 @@ def build_show_rois_config(
         "tool": "show-rois",
         "rows": cast(int, raw_image.shape[0]),
         "cols": cast(int, raw_image.shape[1]),
-        "imageDataUrl": _encode_image(raw_image),
         "rawImage": _encode_raw_image(raw_image),
         "anchor": {
             "roi": roi_to_payload(anchor.roi),
@@ -110,16 +105,6 @@ def roi_to_payload(roi: Roi) -> dict[str, float]:
         "right": float(roi.top_right.x),
         "bottom": float(roi.bottom_left.y),
     }
-
-
-def _encode_image(raw_image: NDArray[np.float32]) -> str:
-    clipped = np.clip(raw_image, 0.0, 1.0)
-    image = Image.fromarray((clipped * 255.0).astype(np.uint8), mode="L")
-
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
 
 
 def _encode_raw_image(raw_image: NDArray[np.float32]) -> dict[str, object]:

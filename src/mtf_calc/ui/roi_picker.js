@@ -2,7 +2,6 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   config: null,
-  image: null,
   rawImage: null,
   mode: "draw",
   display: {
@@ -49,14 +48,17 @@ async function init() {
   }
 
   state.config = await window.pywebview.api.get_request();
+  imageCanvas.width = state.config.cols;
+  imageCanvas.height = state.config.rows;
+  overlayCanvas.width = state.config.cols;
+  overlayCanvas.height = state.config.rows;
+
   state.rawImage = decodeRawImage(state.config.rawImage);
-  if (typeof state.config.imageDataUrl === "string") {
-    state.image = await loadImage(state.config.imageDataUrl);
-    imageCanvas.width = state.config.cols;
-    imageCanvas.height = state.config.rows;
-    overlayCanvas.width = state.config.cols;
-    overlayCanvas.height = state.config.rows;
-    imageCtx.drawImage(state.image, 0, 0, state.config.cols, state.config.rows);
+  if (state.rawImage) {
+    drawRawImage(state.rawImage, state.config.cols, state.config.rows);
+  } else if (typeof state.config.imageDataUrl === "string") {
+    const image = await loadImage(state.config.imageDataUrl);
+    imageCtx.drawImage(image, 0, 0, state.config.cols, state.config.rows);
   }
 
   bindEvents();
@@ -105,6 +107,21 @@ function loadImage(src) {
     image.onerror = () => reject(new Error("Failed to load image"));
     image.src = src;
   });
+}
+
+function drawRawImage(rawImage, cols, rows) {
+  const rgba = new Uint8ClampedArray(cols * rows * 4);
+
+  for (let index = 0; index < rawImage.length; index += 1) {
+    const value = clamp(Math.round(rawImage[index] * 255), 0, 255);
+    const offset = index * 4;
+    rgba[offset] = value;
+    rgba[offset + 1] = value;
+    rgba[offset + 2] = value;
+    rgba[offset + 3] = 255;
+  }
+
+  imageCtx.putImageData(new ImageData(rgba, cols, rows), 0, 0);
 }
 
 function bindEvents() {
