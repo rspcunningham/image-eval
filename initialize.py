@@ -16,8 +16,7 @@ from image_eval.template_io import (
     set_norm_rect,
 )
 
-
-SOURCE_IMAGE_PATH = Path("example-data.npy")
+SOURCE_IMAGE_PATH = Path("samples/raw_object_intensity.npy")
 TEMPLATE_PATH = Path("template.json")
 
 GROUPS = [4, 5, 6, 7]
@@ -45,7 +44,7 @@ def main() -> None:
     try:
         anchor = pick_rect(
             image,
-            "Select the anchor square. Enter confirms, Esc cancels.",
+            "Select the anchor square. Enter to confirm. Esc to cancel.",
             initial=get_anchor_rect(template),
         )
         set_anchor_rect(template, anchor)

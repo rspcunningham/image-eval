@@ -10,7 +10,12 @@ The project is intentionally split into three top-level scripts:
 
 ## Initialize
 
-Edit the constants at the top of `initialize.py`, then run:
+The repo includes two sample arrays:
+
+- `samples/reconstruction.npy`: original float32 reconstruction sample
+- `samples/raw_object_intensity.npy`: `abs(raw_object) ** 2` from the complex64 sample
+
+Edit the constants at the top of `initialize.py` if you want a different source image, then run:
 
 ```bash
 uv run python initialize.py

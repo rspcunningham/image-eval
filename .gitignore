@@ -8,3 +8,5 @@ registration.json
 *.csv
 *.png
 *.npy
+!samples/
+!samples/*.npy
