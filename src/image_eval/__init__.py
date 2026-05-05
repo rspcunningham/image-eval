@@ -1,1 +1,1 @@
-"""Backend helpers for the top-level image evaluation scripts."""
+"""Python package entry point for image-eval."""

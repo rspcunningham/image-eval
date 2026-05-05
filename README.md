@@ -1,38 +1,42 @@
 # image-eval
 
-Small, explicit image evaluation workflows for USAF-style MTF work.
+Image evaluation workflows for USAF-style MTF work.
 
-The project is split into a native ROI authoring tool and headless analysis
-scripts:
+The current implementation is focused on template initialization:
 
 - `native/ROISelector`: macOS AppKit ROI selection, writes a template JSON file
-- `register.py`: future headless registration, writes `registration.json`
-- `evaluate.py`: future headless calculations and plotting
+- `src/image_eval/cli.py`: tiny Python entry point that launches the Swift CLI
 - `template_schema.md`: shared template JSON schema
 - `samples/`: sample NumPy arrays for local testing
 
+The registration and calculation phases are expected to be Python-heavy, but
+they have not been implemented yet.
+
 ## Setup
 
-Install the Python environment and build the native ROI selector:
+Install the Python environment:
 
 ```bash
 uv sync
 ```
 
-The Hatchling build hook runs `swift build` for `native/ROISelector` during
-the local package build. Set `IMAGE_EVAL_SKIP_SWIFT_BUILD=1` to skip the native
-build, or `IMAGE_EVAL_SWIFT_CONFIGURATION=release` to build the release binary.
+The Swift ROI selector is built on demand by SwiftPM when the CLI runs.
 
-## ROI Selection
-
-The repo includes sample arrays:
-
-- `samples/reconstruction.npy`: original float32 reconstruction sample
+## Template Initialization
 
 Run the native macOS ROI selector through the project CLI:
 
 ```bash
-uv run image-eval initialize samples/reconstruction.npy template.json \
+uv run image-eval samples/reconstruction.npy template.json \
+  --groups 3-7 \
+  --elements 1-6
+```
+
+This is equivalent to running the Swift executable directly:
+
+```bash
+uv run -- swift run --package-path native/ROISelector ROISelector \
+  samples/reconstruction.npy template.json \
   --groups 3-7 \
   --elements 1-6
 ```

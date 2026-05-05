@@ -8,19 +8,13 @@ version = "0.1.0"
 description = "MTF, NPS, and DQE calculations"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "numpy>=2.0",
-    "opencv-python>=4.10",
-]
+dependencies = []
 
 [project.scripts]
 image-eval = "image_eval.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/image_eval"]
-
-[tool.hatch.build.targets.wheel.hooks.custom]
-path = "hatch_build.py"
 
 [dependency-groups]
 dev = [
