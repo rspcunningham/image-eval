@@ -1,4 +1,5 @@
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -61,15 +62,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _run_initialize(args: argparse.Namespace) -> int:
     package_path = _repo_root() / "native" / "ROISelector"
-    command = [
-        "swift",
-        "run",
-        "--package-path",
-        str(package_path),
-        "ROISelector",
-        str(args.source_image_path),
-        str(args.template_path),
-    ]
+    executable = _built_roi_selector(package_path)
+    if executable is None:
+        command = [
+            "swift",
+            "run",
+            "--package-path",
+            str(package_path),
+            "ROISelector",
+            str(args.source_image_path),
+            str(args.template_path),
+        ]
+    else:
+        command = [
+            str(executable),
+            str(args.source_image_path),
+            str(args.template_path),
+        ]
     if args.groups is not None:
         command.extend(["--groups", args.groups])
     if args.elements is not None:
@@ -89,6 +98,19 @@ def _run(command: list[str]) -> int:
         print(f"image-eval: error: missing executable: {error.filename}", file=sys.stderr)
         return 127
     return completed.returncode
+
+
+def _built_roi_selector(package_path: Path) -> Path | None:
+    configuration = os.environ.get("IMAGE_EVAL_SWIFT_CONFIGURATION", "debug")
+    candidates = [
+        package_path / ".build" / configuration / "ROISelector",
+        package_path / ".build" / "debug" / "ROISelector",
+        package_path / ".build" / "release" / "ROISelector",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _repo_root() -> Path:

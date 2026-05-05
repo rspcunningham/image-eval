@@ -19,8 +19,12 @@ image-eval = "image_eval.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/image_eval"]
 
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
 [dependency-groups]
 dev = [
+    "hatchling>=1.27",
     "ruff>=0.15.12",
     "ty>=0.0.33",
 ]

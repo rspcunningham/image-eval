@@ -8,6 +8,20 @@ scripts:
 - `native/ROISelector`: macOS AppKit ROI selection, writes a template JSON file
 - `register.py`: future headless registration, writes `registration.json`
 - `evaluate.py`: future headless calculations and plotting
+- `template_schema.md`: shared template JSON schema
+- `samples/`: sample NumPy arrays for local testing
+
+## Setup
+
+Install the Python environment and build the native ROI selector:
+
+```bash
+uv sync
+```
+
+The Hatchling build hook runs `swift build` for `native/ROISelector` during
+the local package build. Set `IMAGE_EVAL_SKIP_SWIFT_BUILD=1` to skip the native
+build, or `IMAGE_EVAL_SWIFT_CONFIGURATION=release` to build the release binary.
 
 ## ROI Selection
 
