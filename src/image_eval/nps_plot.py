@@ -82,7 +82,7 @@ def plot_nps_spectrum(spectrum: NPSSpectrum, *, frequency_unit: str) -> Figure:
         log_power,
         cmap="viridis",
         origin="lower",
-        extent=[x_min, x_max, y_min, y_max],
+        extent=(x_min, x_max, y_min, y_max),
         aspect="auto",
     )
     axis.set_xlabel(f"Frequency x ({frequency_unit})")

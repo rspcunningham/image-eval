@@ -18,7 +18,7 @@ class ImageEvalCLITests(unittest.TestCase):
             template_path = root / "template.json"
             output_dir = root / "outputs"
 
-            image = np.tile(np.array([0.0, 1.0], dtype=np.float64), (16, 8))
+            image = np.tile(np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float64), (16, 4))
             np.save(image_path, image)
             template = {
                 "base_image_path": str(image_path),
@@ -28,8 +28,8 @@ class ImageEvalCLITests(unittest.TestCase):
                     "height": 16,
                 },
                 "normalization_rois": {
-                    "black": {"x0": 0, "y0": 0, "x1": 1, "y1": 16},
-                    "white": {"x0": 1, "y0": 0, "x1": 2, "y1": 16},
+                    "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 16},
+                    "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 16},
                 },
                 "bar_rois": [
                     {
@@ -49,6 +49,11 @@ class ImageEvalCLITests(unittest.TestCase):
             self.assertTrue(paths.mtf_paths.plot_path.exists())
             self.assertEqual(len(paths.mtf_paths.roi_fit_paths), 1)
             self.assertTrue(paths.mtf_paths.roi_fit_paths[0].exists())
+            self.assertTrue(paths.nps_paths.csv_path.exists())
+            self.assertTrue(paths.nps_paths.plot_path.exists())
+            self.assertEqual(len(paths.nps_paths.spectrum_paths), 2)
+            self.assertTrue(paths.nps_paths.spectrum_paths[0].exists())
+            self.assertTrue(paths.nps_paths.spectrum_paths[1].exists())
 
             registration_paths = paths.registration_paths
             self.assertTrue(registration_paths.registration_json_path.exists())
