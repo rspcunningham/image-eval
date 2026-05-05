@@ -67,13 +67,13 @@ def project_template_rois(
             "height": subject_height,
         },
         "normalization_rois": _project_normalization_rois(
-            template.get("normalization_rois"),
+            template["normalization_rois"],
             transform_base_to_subject,
             subject_width,
             subject_height,
         ),
         "bar_rois": _project_bar_rois(
-            template.get("bar_rois"),
+            template["bar_rois"],
             transform_base_to_subject,
             subject_width,
             subject_height,
@@ -87,18 +87,15 @@ def _project_normalization_rois(
     subject_width: int,
     subject_height: int,
 ) -> dict[str, Rect | None]:
-    if not isinstance(normalization_rois, dict):
-        raise ValueError("template does not contain a normalization_rois object")
-
     return {
         "black": _project_rect_if_visible(
-            normalization_rois.get("black"),
+            normalization_rois["black"],
             transform_base_to_subject,
             subject_width,
             subject_height,
         ),
         "white": _project_rect_if_visible(
-            normalization_rois.get("white"),
+            normalization_rois["white"],
             transform_base_to_subject,
             subject_width,
             subject_height,
@@ -112,17 +109,10 @@ def _project_bar_rois(
     subject_width: int,
     subject_height: int,
 ) -> list[dict[str, Any]]:
-    if not isinstance(bar_rois, list):
-        raise ValueError("template does not contain a bar_rois array")
-
     projected_rois: list[dict[str, Any]] = []
-    for index, roi in enumerate(bar_rois):
-        if not isinstance(roi, dict):
-            raise ValueError(f"bar_rois[{index}] must be a JSON object")
-        roi = cast(dict[str, Any], roi)
-
+    for roi in cast(list[dict[str, Any]], bar_rois):
         projected_rect = _project_rect_if_visible(
-            roi.get("rect"),
+            roi["rect"],
             transform_base_to_subject,
             subject_width,
             subject_height,
@@ -130,20 +120,10 @@ def _project_bar_rois(
         if projected_rect is None:
             continue
 
-        group = roi.get("group")
-        element = roi.get("element")
-        orientation = roi.get("orientation")
-        if not isinstance(group, int):
-            raise ValueError(f"bar_rois[{index}] group must be an integer")
-        if not isinstance(element, int):
-            raise ValueError(f"bar_rois[{index}] element must be an integer")
-        if not isinstance(orientation, str):
-            raise ValueError(f"bar_rois[{index}] orientation must be a string")
-
         projected_rois.append({
-            "group": group,
-            "element": element,
-            "orientation": orientation,
+            "group": roi["group"],
+            "element": roi["element"],
+            "orientation": roi["orientation"],
             "rect": projected_rect,
         })
 

@@ -6,17 +6,16 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple, Sequence, cast
+from typing import Any, NamedTuple, Sequence
 
 import numpy as np
 
-from image_eval.mtf_profiles import normalize_image_intensity
+from image_eval.mtf_profiles import NormalizedImage, normalize_image_intensity
 from image_eval.nps_plot import save_nps_curve_plot, save_nps_spectrum_plot
-from image_eval.roi import Rect, as_rect, finite_crop_image
+from image_eval.roi import Rect, finite_crop_image
 from image_eval.template_io import base_image_path, load_2d_npy, load_template
 
 
-NPS_ROI_NAMES = ("black", "white")
 NPS_MAX_RADIAL_FREQUENCY_CYCLES_PER_PIXEL = 0.5
 NPS_MAX_RADIAL_BINS = 128
 
@@ -28,6 +27,8 @@ class SpatialFrequencyCalibration:
 
     @property
     def csv_column(self) -> str:
+        if self.unit == "lp/mm":
+            return "LP per MM"
         return f"frequency {self.unit}"
 
     def convert(self, frequency_cycles_per_pixel: np.ndarray) -> np.ndarray:
@@ -48,6 +49,7 @@ class NPSResult:
     frequency: float
     black_nps: float | None
     white_nps: float | None
+    average_nps: float | None
 
 
 @dataclass(frozen=True)
@@ -117,8 +119,8 @@ def calculate_nps_report(
     *,
     frequency_calibration: SpatialFrequencyCalibration = CYCLES_PER_PIXEL_FREQUENCY,
 ) -> NPSReport:
-    normalized = normalize_image_intensity(image, template.get("normalization_rois"))
-    roi_crops = _normalization_roi_crops(normalized.image, template.get("normalization_rois"))
+    normalized = normalize_image_intensity(image, template["normalization_rois"])
+    roi_crops = _normalization_roi_crops(normalized)
     radial_edges = _radial_bin_edges_cycles_per_pixel([crop for _, _, crop in roi_crops])
 
     spectra = [
@@ -184,18 +186,18 @@ def calculate_nps_spectrum(
 
 
 def nps_results_from_spectra(spectra: Sequence[NPSSpectrum]) -> list[NPSResult]:
-    spectra_by_name = {spectrum.roi_name: spectrum for spectrum in spectra}
-    if not spectra:
-        raise ValueError("cannot calculate NPS results without spectra")
+    black_spectrum, white_spectrum = spectra
 
-    reference_frequencies = spectra[0].radial_frequencies
     results: list[NPSResult] = []
-    for index, frequency in enumerate(reference_frequencies):
+    for index, frequency in enumerate(black_spectrum.radial_frequencies):
+        black_nps = _spectrum_value_or_none(black_spectrum, index)
+        white_nps = _spectrum_value_or_none(white_spectrum, index)
         results.append(
             NPSResult(
                 frequency=float(frequency),
-                black_nps=_spectrum_value_or_none(spectra_by_name.get("black"), index),
-                white_nps=_spectrum_value_or_none(spectra_by_name.get("white"), index),
+                black_nps=black_nps,
+                white_nps=white_nps,
+                average_nps=_mean_available(black_nps, white_nps),
             )
         )
     return results
@@ -254,34 +256,34 @@ def save_nps_results_csv(
                 columns[0]: _format_float(result.frequency),
                 "black NPS": _format_optional_float(result.black_nps),
                 "white NPS": _format_optional_float(result.white_nps),
+                "average NPS": _format_optional_float(result.average_nps),
             })
 
 
 def nps_csv_columns(frequency_calibration: SpatialFrequencyCalibration) -> list[str]:
-    return [frequency_calibration.csv_column, "black NPS", "white NPS"]
+    return [frequency_calibration.csv_column, "black NPS", "white NPS", "average NPS"]
 
 
 def _normalization_roi_crops(
-    normalized_image: np.ndarray,
-    normalization_rois: Any,
-) -> list[tuple[str, Rect, np.ndarray]]:
-    if not isinstance(normalization_rois, dict):
-        raise ValueError("template does not contain a normalization_rois object")
-    normalization_rois = cast(dict[str, Any], normalization_rois)
+    normalized: NormalizedImage,
+) -> tuple[tuple[str, Rect, np.ndarray], tuple[str, Rect, np.ndarray]]:
+    image = normalized.image
+    rois = normalized.normalization_rois
+    return (
+        _normalization_roi_crop(image, rois.black, "black"),
+        _normalization_roi_crop(image, rois.white, "white"),
+    )
 
-    roi_crops: list[tuple[str, Rect, np.ndarray]] = []
-    for roi_name in NPS_ROI_NAMES:
-        label = f"normalization_rois.{roi_name}"
-        rect = as_rect(normalization_rois.get(roi_name), label)
-        crop = finite_crop_image(normalized_image, rect, label)
-        roi_crops.append((roi_name, rect, crop))
-    return roi_crops
+
+def _normalization_roi_crop(
+    image: np.ndarray,
+    rect: Rect,
+    name: str,
+) -> tuple[str, Rect, np.ndarray]:
+    return name, rect, finite_crop_image(image, rect, f"normalization_rois.{name}")
 
 
 def _radial_bin_edges_cycles_per_pixel(crops: Sequence[np.ndarray]) -> np.ndarray:
-    if not crops:
-        raise ValueError("cannot calculate NPS without normalization ROI crops")
-
     min_dimension = min(min(crop.shape) for crop in crops)
     if min_dimension < 2:
         raise ValueError("NPS normalization ROIs must be at least 2x2 pixels")
@@ -329,13 +331,18 @@ def _bin_centers(edges: np.ndarray) -> np.ndarray:
     return (edges[:-1] + edges[1:]) / 2.0
 
 
-def _spectrum_value_or_none(spectrum: NPSSpectrum | None, index: int) -> float | None:
-    if spectrum is None or index >= len(spectrum.radial_nps):
-        return None
+def _spectrum_value_or_none(spectrum: NPSSpectrum, index: int) -> float | None:
     value = float(spectrum.radial_nps[index])
     if not np.isfinite(value):
         return None
     return value
+
+
+def _mean_available(*values: float | None) -> float | None:
+    available = [value for value in values if value is not None]
+    if not available:
+        return None
+    return float(np.mean(available))
 
 
 def _format_optional_float(value: float | None) -> str:

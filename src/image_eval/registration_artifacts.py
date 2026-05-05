@@ -49,22 +49,15 @@ def save_projected_rois_plot(
     figure, axis = _image_figure(image)
     axis.imshow(image, cmap="gray", vmin=0, vmax=255)
 
-    normalization_rois = registered_template.get("normalization_rois")
-    if isinstance(normalization_rois, dict):
-        _draw_rect(axis, normalization_rois.get("black"), "black", "#e15759", linewidth=2.0)
-        _draw_rect(axis, normalization_rois.get("white"), "white", "#59a14f", linewidth=2.0)
+    normalization_rois = registered_template["normalization_rois"]
+    _draw_rect(axis, normalization_rois["black"], "black", "#e15759", linewidth=2.0)
+    _draw_rect(axis, normalization_rois["white"], "white", "#59a14f", linewidth=2.0)
 
-    bar_rois = registered_template.get("bar_rois")
-    if isinstance(bar_rois, list):
-        for roi in bar_rois:
-            if not isinstance(roi, dict):
-                continue
-            orientation = roi.get("orientation")
-            color = "#4e79a7" if orientation == "X" else "#f28e2b"
-            group = roi.get("group")
-            element = roi.get("element")
-            label = f"G{group} E{element} {orientation}"
-            _draw_rect(axis, roi.get("rect"), label, color, linewidth=1.2)
+    for roi in registered_template["bar_rois"]:
+        orientation = roi["orientation"]
+        color = "#4e79a7" if orientation == "X" else "#f28e2b"
+        label = f"G{roi['group']} E{roi['element']} {orientation}"
+        _draw_rect(axis, roi["rect"], label, color, linewidth=1.2)
 
     axis.set_title("Projected ROIs on Subject Image")
     axis.set_axis_off()

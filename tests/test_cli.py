@@ -56,7 +56,11 @@ class ImageEvalCLITests(unittest.TestCase):
             self.assertTrue(paths.nps_paths.spectrum_paths[0].exists())
             self.assertTrue(paths.nps_paths.spectrum_paths[1].exists())
             with paths.nps_paths.csv_path.open(newline="") as file:
-                self.assertEqual(next(csv.reader(file))[0], "frequency lp/mm")
+                self.assertEqual(next(csv.reader(file))[0], "LP per MM")
+            self.assertTrue(paths.dqe_paths.csv_path.exists())
+            self.assertTrue(paths.dqe_paths.plot_path.exists())
+            with paths.dqe_paths.csv_path.open(newline="") as file:
+                self.assertEqual(next(csv.reader(file)), ["LP per MM", "average MTF", "average NPS", "DQE"])
 
             registration_paths = paths.registration_paths
             self.assertTrue(registration_paths.registration_json_path.exists())

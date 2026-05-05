@@ -20,10 +20,12 @@ Evaluate the reconstruction:
 uv run image-eval samples/reconstruction.npy template.json outputs/reconstruction
 ```
 
-Each evaluation writes `mtf.csv`, `mtf.png`, `roi_fits/`, `nps.csv`, `nps.png`, `nps_spectra/`, and `registration/`.
+Each evaluation writes `mtf.csv`, `mtf.png`, `roi_fits/`, `nps.csv`, `nps.png`, `nps_spectra/`, `dqe.csv`, `dqe.png`, and `registration/`.
 
 ## Comparison
 
-Compare `outputs/raw/mtf.csv` and `outputs/reconstruction/mtf.csv` by matching rows on `LP per MM` and using the `average MTF` column. The plot `mtf_comparison.png` is generated from those two CSV files.
+After both evaluations complete, generate `mtf_comparison.png` from `outputs/raw/mtf.csv` and `outputs/reconstruction/mtf.csv` by plotting `average MTF` against `LP per MM`.
 
-Compare `outputs/raw/nps.csv` and `outputs/reconstruction/nps.csv` by using the `frequency lp/mm`, `black NPS`, and `white NPS` columns. The plot `nps_comparison.png` is generated from those two CSV files with a log-scaled Y axis.
+Generate `nps_comparison.png` from `outputs/raw/nps.csv` and `outputs/reconstruction/nps.csv` by plotting `average NPS` against `LP per MM` with a log-scaled Y axis.
+
+Generate `dqe_comparison.png` from `outputs/raw/dqe.csv` and `outputs/reconstruction/dqe.csv` by plotting `DQE` against `LP per MM`.

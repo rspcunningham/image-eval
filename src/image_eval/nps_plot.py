@@ -36,10 +36,12 @@ def plot_nps_curves(results: Sequence[NPSResult], *, frequency_unit: str) -> Fig
     frequencies = np.array([result.frequency for result in results], dtype=np.float64)
     black_nps = _positive_series_with_nan([result.black_nps for result in results])
     white_nps = _positive_series_with_nan([result.white_nps for result in results])
+    average_nps = _positive_series_with_nan([result.average_nps for result in results])
 
     figure, axis = plt.subplots(figsize=(8, 4.8))
     axis.plot(frequencies, black_nps, marker="o", linewidth=1.8, label="Black NPS")
     axis.plot(frequencies, white_nps, marker="s", linewidth=1.8, label="White NPS")
+    axis.plot(frequencies, average_nps, marker="^", linewidth=2.2, label="Average NPS")
     axis.set_yscale("log")
     axis.set_xlabel(f"Spatial frequency ({frequency_unit})")
     axis.set_ylabel("NPS")

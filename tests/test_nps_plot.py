@@ -13,8 +13,8 @@ from image_eval.nps_results import NPSResult, calculate_nps_report
 class NPSPlotTests(unittest.TestCase):
     def test_saves_nps_curve_plot_as_png(self) -> None:
         results = [
-            NPSResult(frequency=0.1, black_nps=0.02, white_nps=0.03),
-            NPSResult(frequency=0.2, black_nps=0.01, white_nps=None),
+            NPSResult(frequency=0.1, black_nps=0.02, white_nps=0.03, average_nps=0.025),
+            NPSResult(frequency=0.2, black_nps=0.01, white_nps=None, average_nps=0.01),
         ]
 
         with tempfile.TemporaryDirectory() as directory:
@@ -31,7 +31,7 @@ class NPSPlotTests(unittest.TestCase):
 
     def test_nps_curve_plot_uses_log_y_scale(self) -> None:
         figure = plot_nps_curves(
-            [NPSResult(frequency=0.1, black_nps=0.02, white_nps=0.03)],
+            [NPSResult(frequency=0.1, black_nps=0.02, white_nps=0.03, average_nps=0.025)],
             frequency_unit="cycles per pixel",
         )
         try:

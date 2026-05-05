@@ -29,6 +29,8 @@ class MTFProfileTests(unittest.TestCase):
 
         self.assertEqual(normalized.normalization.black_mean, 10)
         self.assertEqual(normalized.normalization.white_mean, 30)
+        self.assertEqual(normalized.normalization_rois.black, normalization_rois["black"])
+        self.assertEqual(normalized.normalization_rois.white, normalization_rois["white"])
         np.testing.assert_allclose(
             normalized.image,
             np.array(

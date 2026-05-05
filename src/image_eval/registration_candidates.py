@@ -19,7 +19,7 @@ HOUGH_BIN_LOG_SCALE = 0.15
 HOUGH_BIN_DEGREES = 15.0
 
 MIN_SCALE = 0.1
-MAX_SCALE = 3.0
+MAX_SCALE = 1.0
 
 
 @dataclass(frozen=True)

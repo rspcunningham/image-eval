@@ -34,6 +34,7 @@ class NPSResultsTests(unittest.TestCase):
         for result in report.results:
             self.assertEqual(result.black_nps, 0.0)
             self.assertEqual(result.white_nps, 0.0)
+            self.assertEqual(result.average_nps, 0.0)
 
     def test_deterministic_noise_produces_nonzero_nps(self) -> None:
         stripe = np.tile(np.array([0.0, 1.0, 0.0, -1.0], dtype=np.float64), (8, 2))
@@ -45,6 +46,7 @@ class NPSResultsTests(unittest.TestCase):
 
         self.assertTrue(any((result.black_nps or 0.0) > 0.0 for result in results))
         self.assertTrue(any((result.white_nps or 0.0) > 0.0 for result in results))
+        self.assertTrue(any((result.average_nps or 0.0) > 0.0 for result in results))
 
     def test_frequency_calibration_controls_reported_axis_and_csv_header(self) -> None:
         image = np.zeros((4, 8), dtype=np.float64)
@@ -61,7 +63,7 @@ class NPSResultsTests(unittest.TestCase):
             frequency_calibration=calibration,
         )
 
-        self.assertEqual(nps_csv_columns(calibration)[0], "frequency lp/mm")
+        self.assertEqual(nps_csv_columns(calibration)[0], "LP per MM")
         self.assertAlmostEqual(
             calibrated_report.results[0].frequency,
             default_report.results[0].frequency * 2.0,
@@ -106,6 +108,7 @@ class NPSResultsTests(unittest.TestCase):
             self.assertEqual(list(rows[0].keys()), nps_csv_columns(CYCLES_PER_PIXEL_FREQUENCY))
             self.assertEqual(rows[0]["black NPS"], "0")
             self.assertEqual(rows[0]["white NPS"], "0")
+            self.assertEqual(rows[0]["average NPS"], "0")
 
     def test_cli_loads_image_path_from_template_base_image_path(self) -> None:
         image = np.zeros((4, 8), dtype=np.float64)

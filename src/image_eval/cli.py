@@ -9,6 +9,7 @@ from typing import Any, NamedTuple, Sequence
 import cv2
 import numpy as np
 
+from image_eval.dqe_results import DQEReportPaths, calculate_dqe_report, save_dqe_report
 from image_eval.mtf_results import (
     MTFReportPaths,
     average_pixels_per_mm_from_fits,
@@ -34,6 +35,7 @@ class ImageEvaluationPaths(NamedTuple):
     output_dir: Path
     mtf_paths: MTFReportPaths
     nps_paths: NPSReportPaths
+    dqe_paths: DQEReportPaths
     registration_paths: RegistrationArtifactPaths
 
 
@@ -41,7 +43,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="image-eval",
         description=(
-            "Evaluate a .npy image against a template and write registration, MTF, and NPS artifacts."
+            "Evaluate a .npy image against a template and write registration, MTF, NPS, and DQE artifacts."
         ),
     )
     parser.add_argument("image", type=Path)
@@ -108,11 +110,14 @@ def evaluate_image(image_path: Path, template_json: Path, output_dir: Path) -> I
         ),
     )
     nps_paths = save_nps_report(nps_report, output_dir)
+    dqe_report = calculate_dqe_report(report.results, nps_report.results)
+    dqe_paths = save_dqe_report(dqe_report, output_dir)
 
     return ImageEvaluationPaths(
         output_dir=output_dir,
         mtf_paths=mtf_paths,
         nps_paths=nps_paths,
+        dqe_paths=dqe_paths,
         registration_paths=registration_paths,
     )
 

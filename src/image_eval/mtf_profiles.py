@@ -26,9 +26,16 @@ class IntensityNormalization:
 
 
 @dataclass(frozen=True)
+class NormalizationROIs:
+    black: Rect
+    white: Rect
+
+
+@dataclass(frozen=True)
 class NormalizedImage:
     image: np.ndarray
     normalization: IntensityNormalization
+    normalization_rois: NormalizationROIs
 
 
 @dataclass(frozen=True)
@@ -50,25 +57,20 @@ class PreparedMTFProfiles:
 
 
 def prepare_mtf_profiles(image: np.ndarray, template: dict[str, Any]) -> PreparedMTFProfiles:
-    normalized = normalize_image_intensity(image, template.get("normalization_rois"))
+    normalized = normalize_image_intensity(image, template["normalization_rois"])
     return PreparedMTFProfiles(
         normalized_image=normalized.image,
         normalization=normalized.normalization,
-        bar_profiles=bar_roi_profiles(normalized.image, template.get("bar_rois")),
+        bar_profiles=bar_roi_profiles(normalized.image, template["bar_rois"]),
     )
 
 
 def normalize_image_intensity(image: np.ndarray, normalization_rois: Any) -> NormalizedImage:
-    if not isinstance(normalization_rois, dict):
-        raise ValueError("template does not contain a normalization_rois object")
-    normalization_rois = cast(dict[str, Any], normalization_rois)
-
     image = as_2d_float_image(image)
-    black_rect = as_rect(normalization_rois.get("black"), "normalization_rois.black")
-    white_rect = as_rect(normalization_rois.get("white"), "normalization_rois.white")
+    rois = normalization_roi_rects(normalization_rois)
 
-    black_mean = float(np.mean(finite_roi_pixels(image, black_rect, "normalization_rois.black")))
-    white_mean = float(np.mean(finite_roi_pixels(image, white_rect, "normalization_rois.white")))
+    black_mean = normalization_roi_mean(image, rois.black, "black")
+    white_mean = normalization_roi_mean(image, rois.white, "white")
     scale = white_mean - black_mean
     if not np.isfinite(scale) or scale == 0:
         raise ValueError("white normalization ROI mean must differ from black ROI mean")
@@ -79,30 +81,33 @@ def normalize_image_intensity(image: np.ndarray, normalization_rois: Any) -> Nor
             black_mean=black_mean,
             white_mean=white_mean,
         ),
+        normalization_rois=rois,
     )
 
 
-def bar_roi_profiles(normalized_image: np.ndarray, bar_rois: Any) -> list[BarROIProfile]:
-    if not isinstance(bar_rois, list):
-        raise ValueError("template does not contain a bar_rois array")
+def normalization_roi_rects(normalization_rois: Any) -> NormalizationROIs:
+    normalization_rois = cast(dict[str, Any], normalization_rois)
+    return NormalizationROIs(
+        black=as_rect(normalization_rois["black"], "normalization_rois.black"),
+        white=as_rect(normalization_rois["white"], "normalization_rois.white"),
+    )
 
+
+def normalization_roi_mean(image: np.ndarray, rect: Rect, name: str) -> float:
+    return float(np.mean(finite_roi_pixels(image, rect, f"normalization_rois.{name}")))
+
+
+def bar_roi_profiles(normalized_image: np.ndarray, bar_rois: Any) -> list[BarROIProfile]:
     image = as_2d_float_image(normalized_image)
     profiles: list[BarROIProfile] = []
     for index, roi in enumerate(bar_rois):
-        if not isinstance(roi, dict):
-            raise ValueError(f"bar_rois[{index}] must be a JSON object")
-        roi = cast(dict[str, Any], roi)
-
-        rect_value = roi.get("rect")
+        rect_value = roi["rect"]
         if rect_value is None:
             continue
 
-        group = as_int(roi.get("group"), f"bar_rois[{index}].group")
-        element = as_int(roi.get("element"), f"bar_rois[{index}].element")
-        orientation = roi.get("orientation")
-        if not isinstance(orientation, str):
-            raise ValueError(f"bar_rois[{index}].orientation must be a string")
-
+        group = as_int(roi["group"], f"bar_rois[{index}].group")
+        element = as_int(roi["element"], f"bar_rois[{index}].element")
+        orientation = cast(str, roi["orientation"])
         rect = as_rect(rect_value, f"bar_rois[{index}].rect")
         crop = crop_image(image, rect, f"bar_rois[{index}].rect")
         profile_axis, collapse_axis = _profile_axes(orientation)
