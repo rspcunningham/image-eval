@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Sequence
 
 import cv2
 import numpy as np
@@ -8,8 +8,9 @@ from image_eval.images import ImageArray, to_display_image
 from image_eval.models import Rect
 
 DragMode = Literal["draw", "move", "resize", "pan"]
+LabeledRect = tuple[str, Rect]
 
-_PROMPT_HEIGHT = 78
+_PROMPT_HEIGHT = 110
 _MIN_RECT_SIZE = 2.0
 
 
@@ -27,6 +28,8 @@ class _Point:
 class _PickerState:
     image: np.ndarray
     prompt: str
+    current_label: str | None
+    context_rects: tuple[LabeledRect, ...]
     view_width: int
     view_height: int
     image_width: int
@@ -48,6 +51,8 @@ def pick_rect(
     prompt: str,
     *,
     initial: Rect | None = None,
+    current_label: str | None = None,
+    context_rects: Sequence[LabeledRect] = (),
     window_name: str = "image-eval initialize",
 ) -> Rect:
     display_image = to_display_image(image)
@@ -58,6 +63,11 @@ def pick_rect(
     state = _PickerState(
         image=display_image,
         prompt=prompt,
+        current_label=current_label,
+        context_rects=tuple(
+            (label, rect.clamp(width=image_width, height=image_height))
+            for label, rect in context_rects
+        ),
         view_width=view_width,
         view_height=view_height,
         image_width=image_width,
@@ -94,9 +104,9 @@ def pick_rect(
                 state.needs_redraw = True
             elif key in (ord("f"), ord("F")):
                 _fit_to_view(state)
-            elif key in (ord("+"), ord("=")):
+            elif key in (ord("+"), ord("="), ord("i"), ord("I")):
                 _zoom_at(state, factor=1.2, screen_x=view_width / 2, screen_y=view_height / 2)
-            elif key in (ord("-"), ord("_")):
+            elif key in (ord("-"), ord("_"), ord("o"), ord("O")):
                 _zoom_at(state, factor=1 / 1.2, screen_x=view_width / 2, screen_y=view_height / 2)
     finally:
         try:
@@ -118,6 +128,8 @@ def _handle_mouse(
 
     if event == cv2.EVENT_MOUSEWHEEL:
         delta = _mouse_wheel_delta(flags)
+        if delta == 0:
+            return
         factor = 1.2 if delta > 0 else 1 / 1.2
         _zoom_at(state, factor=factor, screen_x=x, screen_y=y - _PROMPT_HEIGHT)
         return
@@ -225,6 +237,7 @@ def _render(state: _PickerState) -> np.ndarray:
     viewport = canvas[_PROMPT_HEIGHT:, :]
     viewport[:, :] = (12, 12, 12)
     _draw_image_viewport(viewport, state)
+    _draw_context_rects(canvas, state)
 
     if state.rect is not None:
         _draw_rect(canvas, state, state.rect)
@@ -233,27 +246,55 @@ def _render(state: _PickerState) -> np.ndarray:
 
 
 def _draw_prompt(canvas: np.ndarray, state: _PickerState) -> None:
-    cv2.rectangle(canvas, (0, 0), (state.view_width, _PROMPT_HEIGHT), (34, 34, 34), -1)
-    cv2.putText(
+    cv2.rectangle(canvas, (0, 0), (state.view_width, _PROMPT_HEIGHT), (30, 30, 30), -1)
+    cv2.rectangle(canvas, (0, 0), (7, _PROMPT_HEIGHT), (86, 225, 235), -1)
+
+    _put_text_fit(
         canvas,
-        state.prompt,
-        (18, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.72,
-        (245, 245, 245),
-        2,
-        cv2.LINE_AA,
+        "CURRENT ROI",
+        (18, 22),
+        max_width=state.view_width - 36,
+        font_scale=0.45,
+        min_scale=0.35,
+        color=(165, 210, 215),
+        thickness=1,
     )
-    controls = "left drag draw | drag rect move/resize | wheel zoom | middle drag pan | f fit | r reset | Enter accept | Esc cancel"
-    cv2.putText(
+    _put_text_fit(
+        canvas,
+        state.current_label or state.prompt,
+        (18, 55),
+        max_width=state.view_width - 36,
+        font_scale=0.78,
+        min_scale=0.48,
+        color=(245, 245, 245),
+        thickness=2,
+    )
+
+    if state.current_label is not None:
+        _put_text_fit(
+            canvas,
+            state.prompt,
+            (18, 80),
+            max_width=state.view_width - 36,
+            font_scale=0.43,
+            min_scale=0.34,
+            color=(195, 195, 195),
+            thickness=1,
+        )
+
+    controls = (
+        f"zoom {state.zoom:.2f}x | saved ROIs {len(state.context_rects)} | "
+        "wheel/+/-/i/o zoom | middle drag pan | f fit | r reset | Enter accept | Esc cancel"
+    )
+    _put_text_fit(
         canvas,
         controls,
-        (18, 58),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.44,
-        (180, 180, 180),
-        1,
-        cv2.LINE_AA,
+        (18, 102),
+        max_width=state.view_width - 36,
+        font_scale=0.39,
+        min_scale=0.3,
+        color=(160, 160, 160),
+        thickness=1,
     )
 
 
@@ -289,11 +330,44 @@ def _draw_image_viewport(viewport: np.ndarray, state: _PickerState) -> None:
     viewport[paste_y0:paste_y1, paste_x0:paste_x1] = scaled[src_y0:src_y1, src_x0:src_x1]
 
 
+def _draw_context_rects(canvas: np.ndarray, state: _PickerState) -> None:
+    if not state.context_rects:
+        return
+
+    overlay = canvas.copy()
+    for label, rect in state.context_rects:
+        _draw_context_rect(overlay, state, label, rect)
+    cv2.addWeighted(overlay, 0.52, canvas, 0.48, 0.0, dst=canvas)
+
+
+def _draw_context_rect(
+    canvas: np.ndarray,
+    state: _PickerState,
+    label: str,
+    rect: Rect,
+) -> None:
+    left, top, right, bottom = _rect_to_canvas_bounds(state, rect)
+    if right < 0 or bottom < _PROMPT_HEIGHT or left > state.view_width or top > canvas.shape[0]:
+        return
+
+    color = (150, 170, 170)
+    cv2.rectangle(canvas, (left, top), (right, bottom), color, 1, cv2.LINE_AA)
+
+    text_y = max(_PROMPT_HEIGHT + 14, top - 5)
+    _put_text_fit(
+        canvas,
+        label,
+        (max(8, left), text_y),
+        max_width=max(80, state.view_width - max(8, left) - 8),
+        font_scale=0.36,
+        min_scale=0.28,
+        color=color,
+        thickness=1,
+    )
+
+
 def _draw_rect(canvas: np.ndarray, state: _PickerState, rect: Rect) -> None:
-    left = int(round((rect.left * state.zoom) + state.pan_x))
-    top = int(round((rect.top * state.zoom) + state.pan_y)) + _PROMPT_HEIGHT
-    right = int(round((rect.right * state.zoom) + state.pan_x))
-    bottom = int(round((rect.bottom * state.zoom) + state.pan_y)) + _PROMPT_HEIGHT
+    left, top, right, bottom = _rect_to_canvas_bounds(state, rect)
 
     cv2.rectangle(canvas, (left, top), (right, bottom), (86, 225, 235), 2)
     cv2.rectangle(canvas, (left, top), (right, bottom), (86, 225, 235), 1)
@@ -316,6 +390,44 @@ def _draw_rect(canvas: np.ndarray, state: _PickerState, rect: Rect) -> None:
         0.48,
         (86, 225, 235),
         1,
+        cv2.LINE_AA,
+    )
+
+
+def _rect_to_canvas_bounds(state: _PickerState, rect: Rect) -> tuple[int, int, int, int]:
+    left = int(round((rect.left * state.zoom) + state.pan_x))
+    top = int(round((rect.top * state.zoom) + state.pan_y)) + _PROMPT_HEIGHT
+    right = int(round((rect.right * state.zoom) + state.pan_x))
+    bottom = int(round((rect.bottom * state.zoom) + state.pan_y)) + _PROMPT_HEIGHT
+    return left, top, right, bottom
+
+
+def _put_text_fit(
+    canvas: np.ndarray,
+    text: str,
+    origin: tuple[int, int],
+    *,
+    max_width: int,
+    font_scale: float,
+    min_scale: float,
+    color: tuple[int, int, int],
+    thickness: int,
+) -> None:
+    scale = font_scale
+    while scale > min_scale:
+        text_width = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)[0][0]
+        if text_width <= max_width:
+            break
+        scale *= 0.92
+
+    cv2.putText(
+        canvas,
+        text,
+        origin,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        max(scale, min_scale),
+        color,
+        thickness,
         cv2.LINE_AA,
     )
 
@@ -438,7 +550,7 @@ def _window_closed(window_name: str) -> bool:
 
 
 def _mouse_wheel_delta(flags: int) -> int:
-    delta = flags >> 16
-    if delta >= 2**15:
-        delta -= 2**16
-    return delta
+    high_word = (flags >> 16) & 0xFFFF
+    if high_word >= 0x8000:
+        high_word -= 0x10000
+    return high_word
