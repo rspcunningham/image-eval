@@ -29,7 +29,6 @@ import NPYCore
 @Test func templateJSONRoundTripsWithSnakeCase() throws {
     let template = Template(
         sourceImage: SourceImage(path: "sample.npy", width: 20, height: 10),
-        anchor: PixelRect(x0: 1, y0: 2, x1: 3, y1: 4),
         normalizationROIs: NormalizationROIs(
             black: PixelRect(x0: 0, y0: 0, x1: 2, y1: 2),
             white: nil
@@ -52,9 +51,88 @@ import NPYCore
     #expect(text.contains("source_image"))
     #expect(text.contains("normalization_rois"))
     #expect(text.contains("bar_rois"))
+    #expect(!text.contains("\"anchor\""))
 
     let decoded = try JSONDecoder().decode(Template.self, from: data)
     #expect(decoded == template)
+}
+
+@Test func rejectsUnknownAnchorKey() {
+    let data = Data("""
+    {
+      "schema_version": 2,
+      "source_image": {
+        "path": "sample.npy",
+        "width": 20,
+        "height": 10
+      },
+      "anchor": {
+        "x0": 1,
+        "y0": 2,
+        "x1": 3,
+        "y1": 4
+      },
+      "normalization_rois": {
+        "black": null,
+        "white": null
+      },
+      "bar_rois": []
+    }
+    """.utf8)
+
+    expectDecodingError("unknown anchor key") {
+        _ = try JSONDecoder().decode(Template.self, from: data)
+    }
+}
+
+@Test func rejectsMissingRequiredNullFields() {
+    let data = Data("""
+    {
+      "schema_version": 2,
+      "source_image": {
+        "path": "sample.npy",
+        "width": 20,
+        "height": 10
+      },
+      "normalization_rois": {
+        "black": null,
+        "white": null
+      },
+      "bar_rois": [
+        {
+          "group": 4,
+          "element": 1,
+          "orientation": "X"
+        }
+      ]
+    }
+    """.utf8)
+
+    expectDecodingError("missing required bar rect key") {
+        _ = try JSONDecoder().decode(Template.self, from: data)
+    }
+}
+
+@Test func rejectsNonCurrentSchemaVersion() {
+    let data = Data("""
+    {
+      "schema_version": 1,
+      "source_image": {
+        "path": "sample.npy",
+        "width": 20,
+        "height": 10
+      },
+      "normalization_rois": {
+        "black": null,
+        "white": null
+      },
+      "bar_rois": []
+    }
+    """.utf8)
+
+    expectDecodingError("non-current schema version") {
+        _ = try JSONDecoder().decode(Template.self, from: data)
+    }
 }
 
 @Test func createsNewTemplateDocument() throws {
@@ -74,7 +152,35 @@ import NPYCore
     #expect(document.template.schemaVersion == 2)
     #expect(document.template.barROIs.count == 8)
     #expect(document.template.barROIs.map(\.orientation) == ["X", "Y", "X", "Y", "X", "Y", "X", "Y"])
+    #expect(document.entries().map(\.label).prefix(2) == ["Black normalization", "White normalization"])
+    let text = try String(contentsOf: templateURL, encoding: .utf8)
+    #expect(text.contains("\"black\" : null"))
+    #expect(text.contains("\"white\" : null"))
+    #expect(text.contains("\"rect\" : null"))
     #expect(FileManager.default.fileExists(atPath: templateURL.path))
+}
+
+@Test func setRectUpdatesSelectedBarEntry() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let document = TemplateDocument(
+        url: directory.appendingPathComponent("template.json"),
+        template: Template(
+            sourceImage: SourceImage(path: "/tmp/source.npy", width: 20, height: 10),
+            barROIs: [
+                BarROI(group: 4, element: 1, orientation: "X"),
+                BarROI(group: 4, element: 1, orientation: "Y")
+            ]
+        )
+    )
+
+    let rect = PixelRect(x0: 2, y0: 3, x1: 8, y1: 9)
+    try document.setRect(rect, for: .bar(1))
+
+    #expect(document.template.normalizationROIs.black == nil)
+    #expect(document.template.normalizationROIs.white == nil)
+    #expect(document.template.barROIs[0].rect == nil)
+    #expect(document.template.barROIs[1].rect == rect)
 }
 
 @Test func reusesExistingTemplateBars() throws {
@@ -103,6 +209,52 @@ import NPYCore
     #expect(document.template.barROIs == original.barROIs)
 }
 
+@Test func rejectsLowercaseBarOrientation() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let templateURL = directory.appendingPathComponent("template.json")
+
+    let text = """
+    {
+      "schema_version": 2,
+      "source_image": {
+        "path": "/tmp/source.npy",
+        "width": 20,
+        "height": 10
+      },
+      "normalization_rois": {
+        "black": null,
+        "white": null
+      },
+      "bar_rois": [
+        {
+          "group": 4,
+          "element": 1,
+          "orientation": "x",
+          "rect": null
+        }
+      ]
+    }
+    """
+    try text.write(to: templateURL, atomically: true, encoding: .utf8)
+
+    do {
+        _ = try TemplateDocument.loadOrCreate(
+            sourceURL: URL(fileURLWithPath: "/tmp/source.npy"),
+            templateURL: templateURL,
+            imageWidth: 20,
+            imageHeight: 10,
+            groupsSpec: nil,
+            elementsSpec: nil
+        )
+        Issue.record("Expected invalidBarOrientation for lowercase orientation.")
+    } catch TemplateDocumentError.invalidBarOrientation(let orientation) {
+        #expect(orientation == "x")
+    } catch {
+        Issue.record("Expected invalidBarOrientation, got \(error)")
+    }
+}
+
 @Test func displayImageConvertsFloat32() throws {
     let array = try NPYArray(data: makeNPY(
         descr: "<f4",
@@ -122,6 +274,19 @@ private func temporaryDirectory() throws -> URL {
         .appendingPathComponent("ROISelectorCoreTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory
+}
+
+private func expectDecodingError(
+    _ description: String,
+    _ body: () throws -> Void
+) {
+    do {
+        try body()
+        Issue.record("Expected DecodingError for \(description).")
+    } catch is DecodingError {
+    } catch {
+        Issue.record("Expected DecodingError for \(description), got \(error)")
+    }
 }
 
 private func makeNPY(

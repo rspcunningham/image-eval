@@ -1,7 +1,6 @@
 import Foundation
 
 public enum TemplateDocumentError: LocalizedError, Equatable {
-    case unsupportedSchema(Int)
     case dimensionsMismatch(templateWidth: Int, templateHeight: Int, imageWidth: Int, imageHeight: Int)
     case missingGroupsForNewTemplate
     case missingElementsForNewTemplate
@@ -10,8 +9,6 @@ public enum TemplateDocumentError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .unsupportedSchema(let version):
-            "Unsupported template schema version \(version)."
         case .dimensionsMismatch(let templateWidth, let templateHeight, let imageWidth, let imageHeight):
             "Template was initialized for \(templateWidth)x\(templateHeight), but the source image is \(imageWidth)x\(imageHeight)."
         case .missingGroupsForNewTemplate:
@@ -69,7 +66,7 @@ public final class TemplateDocument {
                 width: imageWidth,
                 height: imageHeight
             )
-            template.barROIs = try normalizedBarROIs(template.barROIs)
+            try validateBarROIs(template.barROIs)
             let document = TemplateDocument(url: templateURL, template: template)
             try document.save()
             return document
@@ -107,7 +104,6 @@ public final class TemplateDocument {
 
     public func entries() -> [ROIListEntry] {
         var entries: [ROIListEntry] = [
-            ROIListEntry(id: .anchor, label: "Anchor", rect: template.anchor),
             ROIListEntry(
                 id: .normalization(.black),
                 label: NormalizationROIName.black.label,
@@ -133,8 +129,6 @@ public final class TemplateDocument {
 
     public func rect(for id: ROIIdentifier) -> PixelRect? {
         switch id {
-        case .anchor:
-            template.anchor
         case .normalization(.black):
             template.normalizationROIs.black
         case .normalization(.white):
@@ -150,8 +144,6 @@ public final class TemplateDocument {
             height: template.sourceImage.height
         )
         switch id {
-        case .anchor:
-            template.anchor = clamped
         case .normalization(.black):
             template.normalizationROIs.black = clamped
         case .normalization(.white):
@@ -174,9 +166,6 @@ private func decodeTemplate(from url: URL) throws -> Template {
 }
 
 private func validate(template: Template, imageWidth: Int, imageHeight: Int) throws {
-    guard template.schemaVersion == templateSchemaVersion else {
-        throw TemplateDocumentError.unsupportedSchema(template.schemaVersion)
-    }
     guard template.sourceImage.width == imageWidth, template.sourceImage.height == imageHeight else {
         throw TemplateDocumentError.dimensionsMismatch(
             templateWidth: template.sourceImage.width,
@@ -185,7 +174,7 @@ private func validate(template: Template, imageWidth: Int, imageHeight: Int) thr
             imageHeight: imageHeight
         )
     }
-    _ = try normalizedBarROIs(template.barROIs)
+    try validateBarROIs(template.barROIs)
 }
 
 private func makeBarROIs(
@@ -212,17 +201,10 @@ private func makeBarROIs(
     return rois
 }
 
-private func normalizedBarROIs(_ rois: [BarROI]) throws -> [BarROI] {
-    try rois.map { roi in
-        let orientation = roi.orientation.uppercased()
-        guard fixedOrientations.contains(orientation) else {
+private func validateBarROIs(_ rois: [BarROI]) throws {
+    for roi in rois {
+        guard fixedOrientations.contains(roi.orientation) else {
             throw TemplateDocumentError.invalidBarOrientation(roi.orientation)
         }
-        return BarROI(
-            group: roi.group,
-            element: roi.element,
-            orientation: orientation,
-            rect: roi.rect
-        )
     }
 }

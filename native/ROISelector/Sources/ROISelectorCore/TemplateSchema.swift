@@ -33,6 +33,22 @@ public struct PixelRect: Codable, Equatable, Sendable {
         )
         return normalized.isValid ? normalized : nil
     }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case x0
+        case y0
+        case x1
+        case y1
+    }
+
+    public init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(in: decoder, allowedKeys: CodingKeys.allCases, typeName: "PixelRect")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.x0 = try container.decode(Int.self, forKey: .x0)
+        self.y0 = try container.decode(Int.self, forKey: .y0)
+        self.x1 = try container.decode(Int.self, forKey: .x1)
+        self.y1 = try container.decode(Int.self, forKey: .y1)
+    }
 }
 
 public struct SourceImage: Codable, Equatable, Sendable {
@@ -45,6 +61,20 @@ public struct SourceImage: Codable, Equatable, Sendable {
         self.width = width
         self.height = height
     }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case path
+        case width
+        case height
+    }
+
+    public init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(in: decoder, allowedKeys: CodingKeys.allCases, typeName: "SourceImage")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.path = try container.decode(String.self, forKey: .path)
+        self.width = try container.decode(Int.self, forKey: .width)
+        self.height = try container.decode(Int.self, forKey: .height)
+    }
 }
 
 public struct NormalizationROIs: Codable, Equatable, Sendable {
@@ -54,6 +84,26 @@ public struct NormalizationROIs: Codable, Equatable, Sendable {
     public init(black: PixelRect? = nil, white: PixelRect? = nil) {
         self.black = black
         self.white = white
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case black
+        case white
+    }
+
+    public init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(in: decoder, allowedKeys: CodingKeys.allCases, typeName: "NormalizationROIs")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try requireKey(.black, in: container)
+        try requireKey(.white, in: container)
+        self.black = try container.decodeIfPresent(PixelRect.self, forKey: .black)
+        self.white = try container.decodeIfPresent(PixelRect.self, forKey: .white)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(black, forKey: .black)
+        try container.encode(white, forKey: .white)
     }
 }
 
@@ -73,35 +123,74 @@ public struct BarROI: Codable, Equatable, Sendable {
     public var identityKey: String {
         "\(group):\(element):\(orientation)"
     }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case group
+        case element
+        case orientation
+        case rect
+    }
+
+    public init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(in: decoder, allowedKeys: CodingKeys.allCases, typeName: "BarROI")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try requireKey(.rect, in: container)
+        self.group = try container.decode(Int.self, forKey: .group)
+        self.element = try container.decode(Int.self, forKey: .element)
+        self.orientation = try container.decode(String.self, forKey: .orientation)
+        self.rect = try container.decodeIfPresent(PixelRect.self, forKey: .rect)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(group, forKey: .group)
+        try container.encode(element, forKey: .element)
+        try container.encode(orientation, forKey: .orientation)
+        try container.encode(rect, forKey: .rect)
+    }
 }
 
 public struct Template: Codable, Equatable, Sendable {
     public var schemaVersion: Int
     public var sourceImage: SourceImage
-    public var anchor: PixelRect?
     public var normalizationROIs: NormalizationROIs
     public var barROIs: [BarROI]
 
     public init(
-        schemaVersion: Int = templateSchemaVersion,
         sourceImage: SourceImage,
-        anchor: PixelRect? = nil,
         normalizationROIs: NormalizationROIs = NormalizationROIs(),
         barROIs: [BarROI]
     ) {
-        self.schemaVersion = schemaVersion
+        self.schemaVersion = templateSchemaVersion
         self.sourceImage = sourceImage
-        self.anchor = anchor
         self.normalizationROIs = normalizationROIs
         self.barROIs = barROIs
     }
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case sourceImage = "source_image"
-        case anchor
         case normalizationROIs = "normalization_rois"
         case barROIs = "bar_rois"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(in: decoder, allowedKeys: CodingKeys.allCases, typeName: "Template")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == templateSchemaVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .schemaVersion,
+                in: container,
+                debugDescription: "Expected schema_version \(templateSchemaVersion)."
+            )
+        }
+        self.sourceImage = try container.decode(SourceImage.self, forKey: .sourceImage)
+        self.normalizationROIs = try container.decode(
+            NormalizationROIs.self,
+            forKey: .normalizationROIs
+        )
+        self.barROIs = try container.decode([BarROI].self, forKey: .barROIs)
     }
 }
 
@@ -120,7 +209,6 @@ public enum NormalizationROIName: String, CaseIterable, Sendable {
 }
 
 public enum ROIIdentifier: Hashable, Sendable {
-    case anchor
     case normalization(NormalizationROIName)
     case bar(Int)
 }
@@ -138,5 +226,54 @@ public struct ROIListEntry: Equatable, Sendable {
 
     public var isComplete: Bool {
         rect?.isValid == true
+    }
+}
+
+private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
+private func rejectUnknownKeys<K: CodingKey>(
+    in decoder: Decoder,
+    allowedKeys: [K],
+    typeName: String
+) throws {
+    let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+    let allowedKeyNames = Set(allowedKeys.map(\.stringValue))
+    let unknownKeyNames = container.allKeys
+        .map(\.stringValue)
+        .filter { !allowedKeyNames.contains($0) }
+        .sorted()
+
+    guard let unknownKeyName = unknownKeyNames.first else {
+        return
+    }
+    let unknownKey = DynamicCodingKey(stringValue: unknownKeyName)!
+    throw DecodingError.dataCorrupted(DecodingError.Context(
+        codingPath: decoder.codingPath + [unknownKey],
+        debugDescription: "\(typeName) contains unknown key '\(unknownKeyName)'."
+    ))
+}
+
+private func requireKey<K: CodingKey>(
+    _ key: K,
+    in container: KeyedDecodingContainer<K>
+) throws {
+    guard container.contains(key) else {
+        throw DecodingError.keyNotFound(key, DecodingError.Context(
+            codingPath: container.codingPath,
+            debugDescription: "Missing required key '\(key.stringValue)'."
+        ))
     }
 }

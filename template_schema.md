@@ -2,9 +2,11 @@
 
 This document describes template JSON schema version 2.
 
+Templates must match this schema exactly. Unknown fields are invalid, and
+nullable fields must be present with a JSON `null` value when unset.
+
 The template stores the image-space regions needed for MTF evaluation:
 
-- one anchor ROI
 - two normalization ROIs
 - one ROI for each selected bar group, element, and orientation
 
@@ -43,9 +45,6 @@ All ROI bounds must be integers. Empty or unselected ROIs are represented as
 `source_image`
 : Metadata for the source image this template was authored against.
 
-`anchor`
-: The anchor ROI bounds, or `null` if unset.
-
 `normalization_rois`
 : Object containing `black` and `white` normalization ROI bounds. Each value is
   either an ROI bounds object or `null`.
@@ -82,7 +81,7 @@ Each bar ROI has:
 : `"X"` or `"Y"`.
 
 `rect`
-: ROI bounds object, or `null` if unset.
+: Required ROI bounds object, or `null` if unset.
 
 ## Example
 
@@ -93,12 +92,6 @@ Each bar ROI has:
     "path": "samples/reconstruction.npy",
     "width": 1024,
     "height": 1024
-  },
-  "anchor": {
-    "x0": 100,
-    "y0": 100,
-    "x1": 124,
-    "y1": 124
   },
   "normalization_rois": {
     "black": {
