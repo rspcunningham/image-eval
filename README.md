@@ -15,11 +15,10 @@ The repo includes sample arrays:
 
 - `samples/reconstruction.npy`: original float32 reconstruction sample
 
-Run the native macOS ROI selector from its Swift package:
+Run the native macOS ROI selector through the project CLI:
 
 ```bash
-cd native/ROISelector
-swift run ROISelector ../../samples/reconstruction.npy ../../template.json \
+uv run image-eval initialize samples/reconstruction.npy template.json \
   --groups 3-7 \
   --elements 1-6
 ```

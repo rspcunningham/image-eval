@@ -13,6 +13,9 @@ dependencies = [
     "opencv-python>=4.10",
 ]
 
+[project.scripts]
+image-eval = "image_eval.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/image_eval"]
 
