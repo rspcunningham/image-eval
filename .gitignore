@@ -3,6 +3,7 @@
 .build/
 __pycache__/
 *.py[cod]
+outputs/
 
 template.json
 registration.json
