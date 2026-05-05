@@ -111,6 +111,29 @@ def roi_mtf_value(fitted_profile: FittedBarROIProfile) -> float:
     return fitted_profile.fit.fundamental_amplitude * FUNDAMENTAL_TO_SQUARE_WAVE_MODULATION
 
 
+def roi_pixels_per_mm(fitted_profile: FittedBarROIProfile) -> float:
+    roi = fitted_profile.roi_profile
+    profile_pixels = len(roi.profile)
+    fitted_cycles = fitted_profile.fit.cycles
+    known_lp_per_mm = roi.frequency_lp_per_mm
+
+    if profile_pixels <= 0:
+        raise ValueError("ROI profile must contain at least one pixel")
+    if not np.isfinite(fitted_cycles) or fitted_cycles <= 0:
+        raise ValueError("fitted ROI cycles must be positive and finite")
+    if not np.isfinite(known_lp_per_mm) or known_lp_per_mm <= 0:
+        raise ValueError("ROI frequency_lp_per_mm must be positive and finite")
+
+    return float(known_lp_per_mm * profile_pixels / fitted_cycles)
+
+
+def average_pixels_per_mm_from_fits(fitted_profiles: Sequence[FittedBarROIProfile]) -> float:
+    values = [roi_pixels_per_mm(fitted_profile) for fitted_profile in fitted_profiles]
+    if not values:
+        raise ValueError("cannot calculate pixels per millimetre without fitted ROI profiles")
+    return float(np.mean(values))
+
+
 def save_mtf_report(report: MTFReport, output_dir: Path) -> MTFReportPaths:
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "mtf.csv"

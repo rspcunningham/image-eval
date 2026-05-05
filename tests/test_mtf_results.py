@@ -12,10 +12,12 @@ from image_eval.mtf_profiles import BarROIProfile
 from image_eval.mtf_results import (
     FUNDAMENTAL_TO_SQUARE_WAVE_MODULATION,
     MTF_CSV_COLUMNS,
+    average_pixels_per_mm_from_fits,
     calculate_mtf_results,
     calculate_mtf_report,
     main,
     mtf_results_from_fits,
+    roi_pixels_per_mm,
     save_mtf_report,
     save_mtf_results_csv,
 )
@@ -49,6 +51,30 @@ class MTFResultsTests(unittest.TestCase):
             0.2 * FUNDAMENTAL_TO_SQUARE_WAVE_MODULATION,
         )
         self.assertIsNone(results[0].y_mtf)
+
+    def test_calculates_pixels_per_millimetre_from_fitted_cycles(self) -> None:
+        fitted_profile = fit_bar_roi_profiles([_roi_profile("X", fundamental_amplitude=0.2)])[0]
+
+        pixels_per_mm = roi_pixels_per_mm(fitted_profile)
+
+        self.assertAlmostEqual(pixels_per_mm, 16 * 64 / fitted_profile.fit.cycles)
+
+    def test_averages_pixels_per_millimetre_across_fitted_rois(self) -> None:
+        fitted_profiles = fit_bar_roi_profiles([
+            _roi_profile("X", fundamental_amplitude=0.2),
+            _roi_profile("Y", fundamental_amplitude=0.4),
+        ])
+
+        pixels_per_mm = average_pixels_per_mm_from_fits(fitted_profiles)
+
+        expected = np.mean([
+            roi_pixels_per_mm(fitted_profile) for fitted_profile in fitted_profiles
+        ])
+        self.assertAlmostEqual(pixels_per_mm, expected)
+
+    def test_rejects_average_pixels_per_millimetre_without_fits(self) -> None:
+        with self.assertRaises(ValueError):
+            average_pixels_per_mm_from_fits([])
 
     def test_saves_requested_csv_columns(self) -> None:
         results = mtf_results_from_fits([*_fits("X", 0.2), *_fits("Y", 0.4)])

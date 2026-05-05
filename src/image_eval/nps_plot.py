@@ -34,12 +34,13 @@ def plot_nps_curves(results: Sequence[NPSResult], *, frequency_unit: str) -> Fig
         raise ValueError("cannot plot NPS curves without results")
 
     frequencies = np.array([result.frequency for result in results], dtype=np.float64)
-    black_nps = _series_with_nan([result.black_nps for result in results])
-    white_nps = _series_with_nan([result.white_nps for result in results])
+    black_nps = _positive_series_with_nan([result.black_nps for result in results])
+    white_nps = _positive_series_with_nan([result.white_nps for result in results])
 
     figure, axis = plt.subplots(figsize=(8, 4.8))
     axis.plot(frequencies, black_nps, marker="o", linewidth=1.8, label="Black NPS")
     axis.plot(frequencies, white_nps, marker="s", linewidth=1.8, label="White NPS")
+    axis.set_yscale("log")
     axis.set_xlabel(f"Spatial frequency ({frequency_unit})")
     axis.set_ylabel("NPS")
     axis.set_title("Noise Power Spectrum")
@@ -93,8 +94,11 @@ def plot_nps_spectrum(spectrum: NPSSpectrum, *, frequency_unit: str) -> Figure:
     return figure
 
 
-def _series_with_nan(values: Sequence[float | None]) -> np.ndarray:
-    return np.array([np.nan if value is None else value for value in values], dtype=np.float64)
+def _positive_series_with_nan(values: Sequence[float | None]) -> np.ndarray:
+    return np.array(
+        [value if value is not None and value > 0 else np.nan for value in values],
+        dtype=np.float64,
+    )
 
 
 def _axis_extent(axis: np.ndarray) -> tuple[float, float]:

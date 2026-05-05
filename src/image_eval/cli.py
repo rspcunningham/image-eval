@@ -9,8 +9,18 @@ from typing import Any, NamedTuple, Sequence
 import cv2
 import numpy as np
 
-from image_eval.mtf_results import MTFReportPaths, calculate_mtf_report, save_mtf_report
-from image_eval.nps_results import NPSReportPaths, calculate_nps_report, save_nps_report
+from image_eval.mtf_results import (
+    MTFReportPaths,
+    average_pixels_per_mm_from_fits,
+    calculate_mtf_report,
+    save_mtf_report,
+)
+from image_eval.nps_results import (
+    NPSReportPaths,
+    SpatialFrequencyCalibration,
+    calculate_nps_report,
+    save_nps_report,
+)
 from image_eval.registered_template import project_template_rois
 from image_eval.registration import register_subject_in_base
 from image_eval.registration_artifacts import (
@@ -88,7 +98,15 @@ def evaluate_image(image_path: Path, template_json: Path, output_dir: Path) -> I
 
     report = calculate_mtf_report(subject_image, registered_template)
     mtf_paths = save_mtf_report(report, output_dir)
-    nps_report = calculate_nps_report(subject_image, registered_template)
+    pixels_per_mm = average_pixels_per_mm_from_fits(report.fitted_profiles)
+    nps_report = calculate_nps_report(
+        subject_image,
+        registered_template,
+        frequency_calibration=SpatialFrequencyCalibration(
+            unit="lp/mm",
+            cycles_per_pixel_multiplier=pixels_per_mm,
+        ),
+    )
     nps_paths = save_nps_report(nps_report, output_dir)
 
     return ImageEvaluationPaths(

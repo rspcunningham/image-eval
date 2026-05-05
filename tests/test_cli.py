@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import tempfile
 import unittest
@@ -54,6 +55,8 @@ class ImageEvalCLITests(unittest.TestCase):
             self.assertEqual(len(paths.nps_paths.spectrum_paths), 2)
             self.assertTrue(paths.nps_paths.spectrum_paths[0].exists())
             self.assertTrue(paths.nps_paths.spectrum_paths[1].exists())
+            with paths.nps_paths.csv_path.open(newline="") as file:
+                self.assertEqual(next(csv.reader(file))[0], "frequency lp/mm")
 
             registration_paths = paths.registration_paths
             self.assertTrue(registration_paths.registration_json_path.exists())

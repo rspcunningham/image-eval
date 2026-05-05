@@ -25,3 +25,5 @@ Each evaluation writes `mtf.csv`, `mtf.png`, `roi_fits/`, `nps.csv`, `nps.png`, 
 ## Comparison
 
 Compare `outputs/raw/mtf.csv` and `outputs/reconstruction/mtf.csv` by matching rows on `LP per MM` and using the `average MTF` column. The plot `mtf_comparison.png` is generated from those two CSV files.
+
+Compare `outputs/raw/nps.csv` and `outputs/reconstruction/nps.csv` by using the `frequency lp/mm`, `black NPS`, and `white NPS` columns. The plot `nps_comparison.png` is generated from those two CSV files with a log-scaled Y axis.

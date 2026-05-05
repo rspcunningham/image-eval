@@ -29,6 +29,16 @@ class NPSPlotTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             plot_nps_curves([], frequency_unit="cycles per pixel")
 
+    def test_nps_curve_plot_uses_log_y_scale(self) -> None:
+        figure = plot_nps_curves(
+            [NPSResult(frequency=0.1, black_nps=0.02, white_nps=0.03)],
+            frequency_unit="cycles per pixel",
+        )
+        try:
+            self.assertEqual(figure.axes[0].get_yscale(), "log")
+        finally:
+            figure.clear()
+
     def test_saves_nps_spectrum_plot_as_png(self) -> None:
         image = np.zeros((4, 8), dtype=np.float64)
         image[:, 4:8] = 1.0
