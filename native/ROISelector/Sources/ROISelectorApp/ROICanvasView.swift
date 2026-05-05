@@ -2,6 +2,9 @@ import AppKit
 import ROISelectorCore
 
 final class ROICanvasView: NSView {
+    static let minimumZoom: CGFloat = 0.03
+    static let maximumZoom: CGFloat = 80
+
     private enum DragMode {
         case draw(start: CGPoint)
         case move(start: CGPoint, rect: PixelRect)
@@ -34,6 +37,11 @@ final class ROICanvasView: NSView {
     var onRectChanged: ((PixelRect?) -> Void)?
     var onAdvanceRequested: (() -> Void)?
     var onClearRequested: (() -> Void)?
+    var onZoomChanged: ((CGFloat) -> Void)?
+
+    var currentZoom: CGFloat {
+        zoom
+    }
 
     override var isFlipped: Bool {
         true
@@ -41,6 +49,16 @@ final class ROICanvasView: NSView {
 
     override var acceptsFirstResponder: Bool {
         true
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configureLayer()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureLayer()
     }
 
     func configure(
@@ -80,6 +98,11 @@ final class ROICanvasView: NSView {
             y: (bounds.height - CGFloat(displayImage.height) * zoom) / 2
         )
         needsDisplay = true
+        notifyZoomChanged()
+    }
+
+    func setZoom(_ newZoom: CGFloat) {
+        zoom(to: newZoom, around: CGPoint(x: bounds.midX, y: bounds.midY))
     }
 
     override func layout() {
@@ -91,6 +114,12 @@ final class ROICanvasView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: bounds).addClip()
+        defer {
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
         NSColor.black.setFill()
         bounds.fill()
 
@@ -229,7 +258,8 @@ final class ROICanvasView: NSView {
         guard delta != 0 else {
             return
         }
-        let factor = delta > 0 ? 1.12 : 1 / 1.12
+        let magnitude = min(abs(delta), 12) * 0.006
+        let factor = delta > 0 ? 1 + magnitude : 1 / (1 + magnitude)
         zoom(by: factor, around: point)
     }
 
@@ -265,11 +295,22 @@ final class ROICanvasView: NSView {
         }
     }
 
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .crosshair)
+    }
+
     private var activeEntry: ROIListEntry? {
         guard let activeID else {
             return nil
         }
         return entries.first { $0.id == activeID }
+    }
+
+    private func configureLayer() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.masksToBounds = true
     }
 
     private func setActiveRect(_ rect: PixelRect?) {
@@ -367,8 +408,12 @@ final class ROICanvasView: NSView {
     }
 
     private func zoom(by factor: CGFloat, around point: CGPoint) {
+        zoom(to: zoom * factor, around: point)
+    }
+
+    private func zoom(to requestedZoom: CGFloat, around point: CGPoint) {
         let oldZoom = zoom
-        let newZoom = min(max(oldZoom * factor, 0.03), 80)
+        let newZoom = min(max(requestedZoom, Self.minimumZoom), Self.maximumZoom)
         guard newZoom != oldZoom else {
             return
         }
@@ -381,6 +426,11 @@ final class ROICanvasView: NSView {
             y: point.y - imageY * newZoom
         )
         needsDisplay = true
+        notifyZoomChanged()
+    }
+
+    private func notifyZoomChanged() {
+        onZoomChanged?(zoom)
     }
 
     private func hitResizeHandle(point: CGPoint, rect: PixelRect) -> ResizeHandle? {

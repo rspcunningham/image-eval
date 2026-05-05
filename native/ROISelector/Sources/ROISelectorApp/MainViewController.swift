@@ -12,9 +12,10 @@ final class MainViewController: NSViewController {
     init(document: TemplateDocument, displayImage: NPYDisplayImage) {
         self.document = document
         self.displayImage = displayImage
-        self.activeID = document.entries().first { !$0.isComplete }?.id
-            ?? document.entries().first?.id
-            ?? .anchor
+        let entries = document.entries()
+        self.activeID = entries.first { !$0.isComplete }?.id
+            ?? entries.first?.id
+            ?? .normalization(.black)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -74,6 +75,12 @@ final class MainViewController: NSViewController {
         sidebarController.onClear = { [weak self] in
             self?.clearCurrentROI()
         }
+        sidebarController.onZoomChanged = { [weak self] zoom in
+            self?.canvasView.setZoom(zoom)
+        }
+        sidebarController.onResetZoom = { [weak self] in
+            self?.resetZoom()
+        }
 
         canvasView.onRectChanged = { [weak self] rect in
             self?.setActiveRect(rect)
@@ -83,6 +90,9 @@ final class MainViewController: NSViewController {
         }
         canvasView.onClearRequested = { [weak self] in
             self?.clearCurrentROI()
+        }
+        canvasView.onZoomChanged = { [weak self] zoom in
+            self?.sidebarController.setZoom(zoom)
         }
 
         refreshViews()
@@ -155,6 +165,7 @@ final class MainViewController: NSViewController {
             entries: entries,
             activeID: activeID
         )
+        sidebarController.setZoom(canvasView.currentZoom)
     }
 
     private func showError(_ error: Error) {
