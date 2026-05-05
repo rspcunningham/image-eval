@@ -1,0 +1,552 @@
+{
+  "base_image_path" : "\/Users\/robin\/Desktop\/parasight\/image-eval\/samples\/raw.npy",
+  "bar_rois" : [
+    {
+      "element" : 1,
+      "group" : 4,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1483,
+        "x1" : 1725,
+        "y0" : 1569,
+        "y1" : 1782
+      }
+    },
+    {
+      "element" : 1,
+      "group" : 4,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1811,
+        "x1" : 2026,
+        "y0" : 1553,
+        "y1" : 1800
+      }
+    },
+    {
+      "element" : 2,
+      "group" : 4,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1235,
+        "x1" : 1451,
+        "y0" : 735,
+        "y1" : 922
+      }
+    },
+    {
+      "element" : 2,
+      "group" : 4,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 967,
+        "x1" : 1162,
+        "y0" : 720,
+        "y1" : 934
+      }
+    },
+    {
+      "element" : 3,
+      "group" : 4,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1208,
+        "x1" : 1395,
+        "y0" : 1008,
+        "y1" : 1174
+      }
+    },
+    {
+      "element" : 3,
+      "group" : 4,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 966,
+        "x1" : 1140,
+        "y0" : 997,
+        "y1" : 1187
+      }
+    },
+    {
+      "element" : 4,
+      "group" : 4,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1180,
+        "x1" : 1348,
+        "y0" : 1251,
+        "y1" : 1402
+      }
+    },
+    {
+      "element" : 4,
+      "group" : 4,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 967,
+        "x1" : 1121,
+        "y0" : 1244,
+        "y1" : 1413
+      }
+    },
+    {
+      "element" : 5,
+      "group" : 4,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1154,
+        "x1" : 1309,
+        "y0" : 1473,
+        "y1" : 1604
+      }
+    },
+    {
+      "element" : 5,
+      "group" : 4,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 967,
+        "x1" : 1101,
+        "y0" : 1465,
+        "y1" : 1616
+      }
+    },
+    {
+      "element" : 6,
+      "group" : 4,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1133,
+        "x1" : 1268,
+        "y0" : 1668,
+        "y1" : 1788
+      }
+    },
+    {
+      "element" : 6,
+      "group" : 4,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 966,
+        "x1" : 1086,
+        "y0" : 1660,
+        "y1" : 1798
+      }
+    },
+    {
+      "element" : 1,
+      "group" : 5,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1751,
+        "x1" : 1873,
+        "y0" : 730,
+        "y1" : 834
+      }
+    },
+    {
+      "element" : 1,
+      "group" : 5,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1914,
+        "x1" : 2022,
+        "y0" : 719,
+        "y1" : 842
+      }
+    },
+    {
+      "element" : 2,
+      "group" : 5,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1783,
+        "x1" : 1890,
+        "y0" : 887,
+        "y1" : 976
+      }
+    },
+    {
+      "element" : 2,
+      "group" : 5,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1927,
+        "x1" : 2021,
+        "y0" : 875,
+        "y1" : 985
+      }
+    },
+    {
+      "element" : 3,
+      "group" : 5,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1809,
+        "x1" : 1907,
+        "y0" : 1021,
+        "y1" : 1102
+      }
+    },
+    {
+      "element" : 3,
+      "group" : 5,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1938,
+        "x1" : 2023,
+        "y0" : 1013,
+        "y1" : 1112
+      }
+    },
+    {
+      "element" : 4,
+      "group" : 5,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1832,
+        "x1" : 1919,
+        "y0" : 1145,
+        "y1" : 1218
+      }
+    },
+    {
+      "element" : 4,
+      "group" : 5,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1948,
+        "x1" : 2025,
+        "y0" : 1138,
+        "y1" : 1223
+      }
+    },
+    {
+      "element" : 5,
+      "group" : 5,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1854,
+        "x1" : 1933,
+        "y0" : 1254,
+        "y1" : 1319
+      }
+    },
+    {
+      "element" : 5,
+      "group" : 5,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1957,
+        "x1" : 2024,
+        "y0" : 1248,
+        "y1" : 1325
+      }
+    },
+    {
+      "element" : 6,
+      "group" : 5,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1872,
+        "x1" : 1943,
+        "y0" : 1350,
+        "y1" : 1410
+      }
+    },
+    {
+      "element" : 6,
+      "group" : 5,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1966,
+        "x1" : 2024,
+        "y0" : 1346,
+        "y1" : 1415
+      }
+    },
+    {
+      "element" : 1,
+      "group" : 6,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1623,
+        "x1" : 1686,
+        "y0" : 1317,
+        "y1" : 1369
+      }
+    },
+    {
+      "element" : 1,
+      "group" : 6,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1706,
+        "x1" : 1758,
+        "y0" : 1311,
+        "y1" : 1374
+      }
+    },
+    {
+      "element" : 2,
+      "group" : 6,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1559,
+        "x1" : 1615,
+        "y0" : 1108,
+        "y1" : 1154
+      }
+    },
+    {
+      "element" : 2,
+      "group" : 6,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1495,
+        "x1" : 1541,
+        "y0" : 1103,
+        "y1" : 1159
+      }
+    },
+    {
+      "element" : 3,
+      "group" : 6,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1552,
+        "x1" : 1603,
+        "y0" : 1178,
+        "y1" : 1218
+      }
+    },
+    {
+      "element" : 3,
+      "group" : 6,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1495,
+        "x1" : 1537,
+        "y0" : 1172,
+        "y1" : 1223
+      }
+    },
+    {
+      "element" : 4,
+      "group" : 6,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1546,
+        "x1" : 1593,
+        "y0" : 1240,
+        "y1" : 1274
+      }
+    },
+    {
+      "element" : 4,
+      "group" : 6,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1495,
+        "x1" : 1532,
+        "y0" : 1233,
+        "y1" : 1280
+      }
+    },
+    {
+      "element" : 5,
+      "group" : 6,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1539,
+        "x1" : 1581,
+        "y0" : 1294,
+        "y1" : 1325
+      }
+    },
+    {
+      "element" : 5,
+      "group" : 6,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1495,
+        "x1" : 1528,
+        "y0" : 1289,
+        "y1" : 1330
+      }
+    },
+    {
+      "element" : 6,
+      "group" : 6,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1535,
+        "x1" : 1571,
+        "y0" : 1342,
+        "y1" : 1370
+      }
+    },
+    {
+      "element" : 6,
+      "group" : 6,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1495,
+        "x1" : 1525,
+        "y0" : 1338,
+        "y1" : 1375
+      }
+    },
+    {
+      "element" : 1,
+      "group" : 7,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1689,
+        "x1" : 1722,
+        "y0" : 1108,
+        "y1" : 1132
+      }
+    },
+    {
+      "element" : 1,
+      "group" : 7,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1731,
+        "x1" : 1758,
+        "y0" : 1104,
+        "y1" : 1136
+      }
+    },
+    {
+      "element" : 2,
+      "group" : 7,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1697,
+        "x1" : 1726,
+        "y0" : 1146,
+        "y1" : 1168
+      }
+    },
+    {
+      "element" : 2,
+      "group" : 7,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1734,
+        "x1" : 1758,
+        "y0" : 1143,
+        "y1" : 1171
+      }
+    },
+    {
+      "element" : 3,
+      "group" : 7,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1703,
+        "x1" : 1730,
+        "y0" : 1181,
+        "y1" : 1200
+      }
+    },
+    {
+      "element" : 3,
+      "group" : 7,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1736,
+        "x1" : 1759,
+        "y0" : 1178,
+        "y1" : 1204
+      }
+    },
+    {
+      "element" : 4,
+      "group" : 7,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1711,
+        "x1" : 1734,
+        "y0" : 1212,
+        "y1" : 1229
+      }
+    },
+    {
+      "element" : 4,
+      "group" : 7,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1740,
+        "x1" : 1757,
+        "y0" : 1210,
+        "y1" : 1232
+      }
+    },
+    {
+      "element" : 5,
+      "group" : 7,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1716,
+        "x1" : 1736,
+        "y0" : 1239,
+        "y1" : 1254
+      }
+    },
+    {
+      "element" : 5,
+      "group" : 7,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1743,
+        "x1" : 1759,
+        "y0" : 1235,
+        "y1" : 1257
+      }
+    },
+    {
+      "element" : 6,
+      "group" : 7,
+      "orientation" : "X",
+      "rect" : {
+        "x0" : 1721,
+        "x1" : 1739,
+        "y0" : 1264,
+        "y1" : 1277
+      }
+    },
+    {
+      "element" : 6,
+      "group" : 7,
+      "orientation" : "Y",
+      "rect" : {
+        "x0" : 1745,
+        "x1" : 1758,
+        "y0" : 1261,
+        "y1" : 1279
+      }
+    }
+  ],
+  "normalization_rois" : {
+    "black" : {
+      "x0" : 1636,
+      "x1" : 1680,
+      "y0" : 1110,
+      "y1" : 1152
+    },
+    "white" : {
+      "x0" : 1636,
+      "x1" : 1680,
+      "y0" : 1168,
+      "y1" : 1214
+    }
+  },
+  "source_image" : {
+    "height" : 2464,
+    "path" : "\/Users\/robin\/Desktop\/parasight\/image-eval\/samples\/raw.npy",
+    "width" : 3296
+  }
+}

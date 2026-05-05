@@ -1,6 +1,5 @@
 import Foundation
 
-public let templateSchemaVersion = 2
 public let fixedOrientations = ["X", "Y"]
 
 public struct PixelRect: Codable, Equatable, Sendable {
@@ -151,24 +150,25 @@ public struct BarROI: Codable, Equatable, Sendable {
 }
 
 public struct Template: Codable, Equatable, Sendable {
-    public var schemaVersion: Int
+    public var baseImagePath: String
     public var sourceImage: SourceImage
     public var normalizationROIs: NormalizationROIs
     public var barROIs: [BarROI]
 
     public init(
         sourceImage: SourceImage,
+        baseImagePath: String? = nil,
         normalizationROIs: NormalizationROIs = NormalizationROIs(),
         barROIs: [BarROI]
     ) {
-        self.schemaVersion = templateSchemaVersion
+        self.baseImagePath = baseImagePath ?? sourceImage.path
         self.sourceImage = sourceImage
         self.normalizationROIs = normalizationROIs
         self.barROIs = barROIs
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion = "schema_version"
+        case baseImagePath = "base_image_path"
         case sourceImage = "source_image"
         case normalizationROIs = "normalization_rois"
         case barROIs = "bar_rois"
@@ -177,14 +177,8 @@ public struct Template: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         try rejectUnknownKeys(in: decoder, allowedKeys: CodingKeys.allCases, typeName: "Template")
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == templateSchemaVersion else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .schemaVersion,
-                in: container,
-                debugDescription: "Expected schema_version \(templateSchemaVersion)."
-            )
-        }
+        try requireKey(.baseImagePath, in: container)
+        self.baseImagePath = try container.decode(String.self, forKey: .baseImagePath)
         self.sourceImage = try container.decode(SourceImage.self, forKey: .sourceImage)
         self.normalizationROIs = try container.decode(
             NormalizationROIs.self,

@@ -1,6 +1,6 @@
 # Template Schema
 
-This document describes template JSON schema version 2.
+This document describes the template JSON schema.
 
 Templates must match this schema exactly. Unknown fields are invalid, and
 nullable fields must be present with a JSON `null` value when unset.
@@ -39,8 +39,9 @@ All ROI bounds must be integers. Empty or unselected ROIs are represented as
 
 ## Top-Level Fields
 
-`schema_version`
-: Integer schema version. Version 2 uses integer half-open ROI bounds.
+`base_image_path`
+: Path to the base image used by the ROI selector when this template was
+  authored or last saved. The Swift app writes this as an absolute path.
 
 `source_image`
 : Metadata for the source image this template was authored against.
@@ -57,7 +58,7 @@ All ROI bounds must be integers. Empty or unselected ROIs are represented as
 
 ```json
 {
-  "path": "samples/reconstruction.npy",
+  "path": "/path/to/reconstruction.npy",
   "width": 1024,
   "height": 1024
 }
@@ -87,9 +88,9 @@ Each bar ROI has:
 
 ```json
 {
-  "schema_version": 2,
+  "base_image_path": "/path/to/reconstruction.npy",
   "source_image": {
-    "path": "samples/reconstruction.npy",
+    "path": "/path/to/reconstruction.npy",
     "width": 1024,
     "height": 1024
   },

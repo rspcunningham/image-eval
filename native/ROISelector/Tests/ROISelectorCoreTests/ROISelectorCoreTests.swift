@@ -47,10 +47,11 @@ import NPYCore
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(template)
     let text = String(decoding: data, as: UTF8.self)
-    #expect(text.contains("schema_version"))
+    #expect(text.contains("base_image_path"))
     #expect(text.contains("source_image"))
     #expect(text.contains("normalization_rois"))
     #expect(text.contains("bar_rois"))
+    #expect(!text.contains("schema_version"))
     #expect(!text.contains("\"anchor\""))
 
     let decoded = try JSONDecoder().decode(Template.self, from: data)
@@ -60,7 +61,7 @@ import NPYCore
 @Test func rejectsUnknownAnchorKey() {
     let data = Data("""
     {
-      "schema_version": 2,
+      "base_image_path": "sample.npy",
       "source_image": {
         "path": "sample.npy",
         "width": 20,
@@ -88,7 +89,7 @@ import NPYCore
 @Test func rejectsMissingRequiredNullFields() {
     let data = Data("""
     {
-      "schema_version": 2,
+      "base_image_path": "sample.npy",
       "source_image": {
         "path": "sample.npy",
         "width": 20,
@@ -113,10 +114,11 @@ import NPYCore
     }
 }
 
-@Test func rejectsNonCurrentSchemaVersion() {
+@Test func rejectsUnknownSchemaVersionKey() {
     let data = Data("""
     {
-      "schema_version": 1,
+      "schema_version": 3,
+      "base_image_path": "sample.npy",
       "source_image": {
         "path": "sample.npy",
         "width": 20,
@@ -130,7 +132,7 @@ import NPYCore
     }
     """.utf8)
 
-    expectDecodingError("non-current schema version") {
+    expectDecodingError("unknown schema version key") {
         _ = try JSONDecoder().decode(Template.self, from: data)
     }
 }
@@ -149,15 +151,75 @@ import NPYCore
         elementsSpec: "1,2"
     )
 
-    #expect(document.template.schemaVersion == 2)
+    #expect(document.template.baseImagePath == "/tmp/source.npy")
     #expect(document.template.barROIs.count == 8)
     #expect(document.template.barROIs.map(\.orientation) == ["X", "Y", "X", "Y", "X", "Y", "X", "Y"])
     #expect(document.entries().map(\.label).prefix(2) == ["Black normalization", "White normalization"])
     let text = try String(contentsOf: templateURL, encoding: .utf8)
+    #expect(text.contains("\"base_image_path\" : \"\\/tmp\\/source.npy\""))
+    #expect(!text.contains("schema_version"))
     #expect(text.contains("\"black\" : null"))
     #expect(text.contains("\"white\" : null"))
     #expect(text.contains("\"rect\" : null"))
     #expect(FileManager.default.fileExists(atPath: templateURL.path))
+}
+
+@Test func rejectsMissingBaseImagePath() {
+    let data = Data("""
+    {
+      "source_image": {
+        "path": "/tmp/source.npy",
+        "width": 20,
+        "height": 10
+      },
+      "normalization_rois": {
+        "black": null,
+        "white": null
+      },
+      "bar_rois": []
+    }
+    """.utf8)
+
+    expectDecodingError("missing base image path") {
+        _ = try JSONDecoder().decode(Template.self, from: data)
+    }
+}
+
+@Test func savingExistingTemplateWritesBaseImagePath() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let templateURL = directory.appendingPathComponent("template.json")
+
+    let text = """
+    {
+      "base_image_path": "/tmp/old-source.npy",
+      "source_image": {
+        "path": "/tmp/old-source.npy",
+        "width": 20,
+        "height": 10
+      },
+      "normalization_rois": {
+        "black": null,
+        "white": null
+      },
+      "bar_rois": []
+    }
+    """
+    try text.write(to: templateURL, atomically: true, encoding: .utf8)
+
+    let document = try TemplateDocument.loadOrCreate(
+        sourceURL: URL(fileURLWithPath: "/tmp/source.npy"),
+        templateURL: templateURL,
+        imageWidth: 20,
+        imageHeight: 10,
+        groupsSpec: nil,
+        elementsSpec: nil
+    )
+
+    #expect(document.template.baseImagePath == "/tmp/source.npy")
+    let saved = try String(contentsOf: templateURL, encoding: .utf8)
+    #expect(saved.contains("\"base_image_path\" : \"\\/tmp\\/source.npy\""))
+    #expect(!saved.contains("schema_version"))
 }
 
 @Test func setRectUpdatesSelectedBarEntry() throws {
@@ -216,7 +278,7 @@ import NPYCore
 
     let text = """
     {
-      "schema_version": 2,
+      "base_image_path": "/tmp/source.npy",
       "source_image": {
         "path": "/tmp/source.npy",
         "width": 20,
