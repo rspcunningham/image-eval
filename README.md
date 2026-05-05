@@ -2,33 +2,48 @@
 
 Small, explicit image evaluation workflows for USAF-style MTF work.
 
-The project is intentionally split into three top-level scripts:
+The project is split into a native ROI authoring tool and headless analysis
+scripts:
 
-- `initialize.py`: interactive OpenCV ROI selection, writes `template.json`
+- `native/ROISelector`: macOS AppKit ROI selection, writes a template JSON file
 - `register.py`: future headless registration, writes `registration.json`
 - `evaluate.py`: future headless calculations and plotting
 
-## Initialize
+## ROI Selection
 
-The repo includes two sample arrays:
+The repo includes sample arrays:
 
 - `samples/reconstruction.npy`: original float32 reconstruction sample
-- `samples/raw_object_intensity.npy`: `abs(raw_object) ** 2` from the complex64 sample
 
-Edit the constants at the top of `initialize.py` if you want a different source image, then run:
+Run the native macOS ROI selector from its Swift package:
 
 ```bash
-uv run python initialize.py
+cd native/ROISelector
+swift run ROISelector ../../samples/reconstruction.npy ../../template.json \
+  --groups 3-7 \
+  --elements 1-6
 ```
 
-The OpenCV picker uses:
+If the output template already exists, its saved `bar_rois` list and ROI
+rectangles are reused. If the output template does not exist yet, `--groups`
+and `--elements` are required to create the initial bar ROI list.
 
+`--groups` and `--elements` accept comma-separated values and ranges, such as
+`4,5,7`, `4-7`, or `-1..3`. Orientations are always `X,Y`.
+
+For negative group ranges, use the equals form, for example `--groups=-1..3`,
+so the CLI does not interpret the value as another option.
+
+The ROI selector uses template schema version 2. See `template_schema.md`.
+
+The AppKit canvas uses:
+
+- current ROI: shown in the canvas HUD and selected in the sidebar
+- saved ROIs: shown as muted context rectangles
 - left drag: draw a rectangle
-- drag inside rectangle: move it
-- drag an edge or corner: resize it
-- mouse wheel: zoom
-- middle drag: pan
-- `f`: fit image
-- `r`: reset current rectangle
-- `Enter`: confirm
-- `Esc` or `q`: cancel
+- drag inside active rectangle: move it
+- drag an active edge or corner: resize it
+- scroll, pinch, `+`, or `-`: zoom
+- right/middle drag or space-drag: pan
+- `Enter`: advance to the next ROI
+- `Delete`: clear the active ROI
