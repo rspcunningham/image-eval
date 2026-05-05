@@ -14,7 +14,8 @@ dependencies = [
 ]
 
 [project.scripts]
-image-eval = "image_eval.cli:main"
+initialize = "image_eval.initialize:main"
+register-crop = "image_eval.register_crop:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/image_eval"]
