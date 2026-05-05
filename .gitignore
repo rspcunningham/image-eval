@@ -1,2 +1,14 @@
 .venv/
+.ruff_cache/
+.build/
 __pycache__/
+*.py[cod]
+outputs/
+
+template.json
+registration.json
+*.csv
+*.png
+*.npy
+!samples/
+!samples/*.npy
