@@ -94,7 +94,7 @@ public final class TemplateDocument {
 
     public func save() throws {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(template)
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(

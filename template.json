@@ -1,5 +1,5 @@
 {
-  "base_image_path" : "\/Users\/robin\/Desktop\/parasight\/image-eval\/samples\/raw.npy",
+  "base_image_path" : "/Users/robin/Desktop/parasight/image-eval/samples/raw.npy",
   "bar_rois" : [
     {
       "element" : 1,
@@ -546,7 +546,7 @@
   },
   "source_image" : {
     "height" : 2464,
-    "path" : "\/Users\/robin\/Desktop\/parasight\/image-eval\/samples\/raw.npy",
+    "path" : "/Users/robin/Desktop/parasight/image-eval/samples/raw.npy",
     "width" : 3296
   }
 }

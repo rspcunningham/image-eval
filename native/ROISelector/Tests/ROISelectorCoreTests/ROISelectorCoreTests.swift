@@ -156,7 +156,7 @@ import NPYCore
     #expect(document.template.barROIs.map(\.orientation) == ["X", "Y", "X", "Y", "X", "Y", "X", "Y"])
     #expect(document.entries().map(\.label).prefix(2) == ["Black normalization", "White normalization"])
     let text = try String(contentsOf: templateURL, encoding: .utf8)
-    #expect(text.contains("\"base_image_path\" : \"\\/tmp\\/source.npy\""))
+    #expect(text.contains("\"base_image_path\" : \"/tmp/source.npy\""))
     #expect(!text.contains("schema_version"))
     #expect(text.contains("\"black\" : null"))
     #expect(text.contains("\"white\" : null"))
@@ -218,7 +218,7 @@ import NPYCore
 
     #expect(document.template.baseImagePath == "/tmp/source.npy")
     let saved = try String(contentsOf: templateURL, encoding: .utf8)
-    #expect(saved.contains("\"base_image_path\" : \"\\/tmp\\/source.npy\""))
+    #expect(saved.contains("\"base_image_path\" : \"/tmp/source.npy\""))
     #expect(!saved.contains("schema_version"))
 }
 
