@@ -153,7 +153,7 @@ final class ROICanvasView: NSView {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
-        if spaceIsDown {
+        if spaceIsDown || event.modifierFlags.contains(.shift) {
             dragMode = .pan(start: point, pan: pan)
             return
         }
