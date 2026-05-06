@@ -61,12 +61,7 @@ public final class TemplateDocument {
                 )
             }
 
-            template.sourceImage = SourceImage(
-                path: sourceURL.path,
-                width: imageWidth,
-                height: imageHeight
-            )
-            template.baseImagePath = sourceURL.path
+            template.sourceImage = SourceImage(width: imageWidth, height: imageHeight)
             try validateBarROIs(template.barROIs)
             let document = TemplateDocument(url: templateURL, template: template)
             try document.save()
@@ -83,8 +78,7 @@ public final class TemplateDocument {
         let groups = try IntegerRangeParser.parse(groupsSpec, label: "groups")
         let elements = try IntegerRangeParser.parse(elementsSpec, label: "elements", minimum: 1)
         let template = Template(
-            sourceImage: SourceImage(path: sourceURL.path, width: imageWidth, height: imageHeight),
-            baseImagePath: sourceURL.path,
+            sourceImage: SourceImage(width: imageWidth, height: imageHeight),
             barROIs: makeBarROIs(groups: groups, elements: elements)
         )
         let document = TemplateDocument(url: templateURL, template: template)

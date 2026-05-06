@@ -1,86 +1,149 @@
 from __future__ import annotations
 
-import csv
+import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import numpy as np
 
-from image_eval.cli import evaluate_image
+from image_eval.cli import main
 
 
 class ImageEvalCLITests(unittest.TestCase):
-    def test_evaluates_base_image_with_identity_registration_and_fixed_outputs(self) -> None:
+    def test_json_stdout_uses_explicit_base_template_and_subject_sources(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            image_path = root / "base.npy"
-            template_path = root / "template.json"
+            image_path, template_path = _write_inputs(root)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main([
+                    "--base-url",
+                    str(image_path),
+                    "--template",
+                    str(template_path),
+                    "--subject-url",
+                    str(image_path),
+                    "--json",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            report = json.loads(stdout.getvalue())
+            self.assertEqual(report["schema_version"], 1)
+            self.assertEqual(report["registration"]["mode"], "identity")
+            self.assertEqual(report["image_shapes"]["base"], {"height": 16, "width": 16})
+            self.assertNotIn("base_image_path", report["registered_template"])
+            self.assertNotIn("path", report["registered_template"]["source_image"])
+            self.assertEqual(report["mtf"]["frequency_unit"], "lp/mm")
+            self.assertEqual(report["nps"]["frequency_unit"], "lp/mm")
+            self.assertEqual(report["dqe"]["frequency_unit"], "lp/mm")
+            self.assertGreaterEqual(len(report["mtf"]["rows"]), 1)
+            self.assertGreaterEqual(len(report["nps"]["rows"]), 1)
+
+    def test_out_writes_report_and_default_plot_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image_path, template_path = _write_inputs(root)
             output_dir = root / "outputs"
 
-            image = np.tile(np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float64), (16, 4))
-            np.save(image_path, image)
-            template = {
-                "base_image_path": str(image_path),
-                "source_image": {
-                    "path": str(image_path),
-                    "width": 16,
-                    "height": 16,
-                },
-                "normalization_rois": {
-                    "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 16},
-                    "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 16},
-                },
-                "bar_rois": [
-                    {
-                        "group": 0,
-                        "element": 1,
-                        "orientation": "X",
-                        "rect": {"x0": 0, "y0": 0, "x1": 16, "y1": 16},
-                    }
-                ],
+            exit_code = main([
+                "--base-url",
+                image_path.as_uri(),
+                "--template",
+                template_path.as_uri(),
+                "--subject-url",
+                image_path.as_uri(),
+                "--out",
+                str(output_dir),
+            ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue((output_dir / "report.json").exists())
+            self.assertTrue((output_dir / "mtf.png").exists())
+            self.assertTrue((output_dir / "nps.png").exists())
+            self.assertTrue((output_dir / "dqe.png").exists())
+            self.assertTrue((output_dir / "roi_fits" / "001_g0_e1_x_fit.png").exists())
+            self.assertTrue((output_dir / "nps_spectra" / "black_2d.png").exists())
+            self.assertTrue((output_dir / "registration" / "registration.json").exists())
+
+    def test_no_plots_writes_only_json_report(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image_path, template_path = _write_inputs(root)
+            output_dir = root / "outputs"
+
+            exit_code = main([
+                "--base-url",
+                str(image_path),
+                "--template",
+                str(template_path),
+                "--subject-url",
+                str(image_path),
+                "--out",
+                str(output_dir),
+                "--no-plots",
+            ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue((output_dir / "report.json").exists())
+            self.assertFalse((output_dir / "mtf.png").exists())
+            self.assertFalse((output_dir / "registration").exists())
+
+    def test_plot_selection_writes_only_requested_plot_classes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image_path, template_path = _write_inputs(root)
+            output_dir = root / "outputs"
+
+            exit_code = main([
+                "--base-url",
+                str(image_path),
+                "--template",
+                str(template_path),
+                "--subject-url",
+                str(image_path),
+                "--out",
+                str(output_dir),
+                "--plots",
+                "mtf,nps",
+            ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue((output_dir / "mtf.png").exists())
+            self.assertTrue((output_dir / "nps.png").exists())
+            self.assertFalse((output_dir / "dqe.png").exists())
+            self.assertFalse((output_dir / "roi_fits").exists())
+
+
+def _write_inputs(root: Path) -> tuple[Path, Path]:
+    image_path = root / "base.npy"
+    template_path = root / "template.json"
+
+    image = np.tile(np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float64), (16, 4))
+    np.save(image_path, image)
+    template = {
+        "source_image": {
+            "width": 16,
+            "height": 16,
+        },
+        "normalization_rois": {
+            "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 16},
+            "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 16},
+        },
+        "bar_rois": [
+            {
+                "group": 0,
+                "element": 1,
+                "orientation": "X",
+                "rect": {"x0": 0, "y0": 0, "x1": 16, "y1": 16},
             }
-            with template_path.open("w") as file:
-                json.dump(template, file)
-
-            paths = evaluate_image(image_path, template_path, output_dir)
-
-            self.assertTrue(paths.mtf_paths.csv_path.exists())
-            self.assertTrue(paths.mtf_paths.plot_path.exists())
-            self.assertEqual(len(paths.mtf_paths.roi_fit_paths), 1)
-            self.assertTrue(paths.mtf_paths.roi_fit_paths[0].exists())
-            self.assertTrue(paths.nps_paths.csv_path.exists())
-            self.assertTrue(paths.nps_paths.plot_path.exists())
-            self.assertEqual(len(paths.nps_paths.spectrum_paths), 2)
-            self.assertTrue(paths.nps_paths.spectrum_paths[0].exists())
-            self.assertTrue(paths.nps_paths.spectrum_paths[1].exists())
-            with paths.nps_paths.csv_path.open(newline="") as file:
-                self.assertEqual(next(csv.reader(file))[0], "LP per MM")
-            self.assertTrue(paths.dqe_paths.csv_path.exists())
-            self.assertTrue(paths.dqe_paths.plot_path.exists())
-            with paths.dqe_paths.csv_path.open(newline="") as file:
-                self.assertEqual(next(csv.reader(file)), ["LP per MM", "average MTF", "average NPS", "DQE"])
-
-            registration_paths = paths.registration_paths
-            self.assertTrue(registration_paths.registration_json_path.exists())
-            self.assertTrue(registration_paths.registered_template_path.exists())
-            self.assertTrue(registration_paths.roi_overlay_path.exists())
-            self.assertTrue(registration_paths.image_overlay_path.exists())
-
-            with registration_paths.registration_json_path.open() as file:
-                registration = json.load(file)
-            self.assertEqual(registration["mode"], "identity")
-            self.assertEqual(
-                registration["transform_subject_to_base"],
-                [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            )
-
-            with registration_paths.registered_template_path.open() as file:
-                registered_template = json.load(file)
-            self.assertEqual(registered_template["source_image"]["width"], 16)
-            self.assertEqual(registered_template["source_image"]["height"], 16)
-            self.assertEqual(len(registered_template["bar_rois"]), 1)
+        ],
+    }
+    template_path.write_text(json.dumps(template))
+    return image_path, template_path
 
 
 if __name__ == "__main__":

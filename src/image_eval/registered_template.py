@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 from image_eval.registration import register_subject_in_base
-from image_eval.template_io import base_image_path, load_2d_npy, load_template
+from image_eval.sources import load_image_source, load_template_source
 
 
 Rect = dict[str, int]
@@ -21,21 +21,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Project visible template ROIs into a registered subject .npy image."
     )
-    parser.add_argument("template_json", type=Path)
-    parser.add_argument("subject_image", type=Path)
+    parser.add_argument("--base-url", required=True)
+    parser.add_argument("--template", required=True)
+    parser.add_argument("--subject-url", required=True)
     parser.add_argument("output_template_json", type=Path)
     args = parser.parse_args(argv)
 
     try:
-        template = load_template(args.template_json)
-        base_image = load_2d_npy(base_image_path(args.template_json, template))
-        subject_image = load_2d_npy(args.subject_image)
+        template = load_template_source(args.template)
+        base_image = load_image_source(args.base_url)
+        subject_image = load_image_source(args.subject_url)
         registration = register_subject_in_base(base_image, subject_image)
         output_template = project_template_rois(
             template,
             registration["transform_subject_to_base"],
             subject_image.shape,
-            args.subject_image.resolve(),
         )
         args.output_template_json.parent.mkdir(parents=True, exist_ok=True)
         with args.output_template_json.open("w") as file:
@@ -52,7 +52,6 @@ def project_template_rois(
     template: dict[str, Any],
     transform_subject_to_base: Any,
     subject_shape: tuple[int, int],
-    subject_path: Path,
 ) -> dict[str, Any]:
     subject_height, subject_width = subject_shape
     transform_base_to_subject = cv2.invertAffineTransform(
@@ -60,9 +59,7 @@ def project_template_rois(
     )
 
     return {
-        "base_image_path": str(subject_path),
         "source_image": {
-            "path": str(subject_path),
             "width": subject_width,
             "height": subject_height,
         },

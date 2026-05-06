@@ -28,7 +28,7 @@ import NPYCore
 
 @Test func templateJSONRoundTripsWithSnakeCase() throws {
     let template = Template(
-        sourceImage: SourceImage(path: "sample.npy", width: 20, height: 10),
+        sourceImage: SourceImage(width: 20, height: 10),
         normalizationROIs: NormalizationROIs(
             black: PixelRect(x0: 0, y0: 0, x1: 2, y1: 2),
             white: nil
@@ -47,7 +47,8 @@ import NPYCore
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(template)
     let text = String(decoding: data, as: UTF8.self)
-    #expect(text.contains("base_image_path"))
+    #expect(!text.contains("base_image_path"))
+    #expect(!text.contains("\"path\""))
     #expect(text.contains("source_image"))
     #expect(text.contains("normalization_rois"))
     #expect(text.contains("bar_rois"))
@@ -61,9 +62,7 @@ import NPYCore
 @Test func rejectsUnknownAnchorKey() {
     let data = Data("""
     {
-      "base_image_path": "sample.npy",
       "source_image": {
-        "path": "sample.npy",
         "width": 20,
         "height": 10
       },
@@ -89,9 +88,7 @@ import NPYCore
 @Test func rejectsMissingRequiredNullFields() {
     let data = Data("""
     {
-      "base_image_path": "sample.npy",
       "source_image": {
-        "path": "sample.npy",
         "width": 20,
         "height": 10
       },
@@ -118,9 +115,7 @@ import NPYCore
     let data = Data("""
     {
       "schema_version": 3,
-      "base_image_path": "sample.npy",
       "source_image": {
-        "path": "sample.npy",
         "width": 20,
         "height": 10
       },
@@ -151,12 +146,12 @@ import NPYCore
         elementsSpec: "1,2"
     )
 
-    #expect(document.template.baseImagePath == "/tmp/source.npy")
     #expect(document.template.barROIs.count == 8)
     #expect(document.template.barROIs.map(\.orientation) == ["X", "Y", "X", "Y", "X", "Y", "X", "Y"])
     #expect(document.entries().map(\.label).prefix(2) == ["Black normalization", "White normalization"])
     let text = try String(contentsOf: templateURL, encoding: .utf8)
-    #expect(text.contains("\"base_image_path\" : \"/tmp/source.npy\""))
+    #expect(!text.contains("base_image_path"))
+    #expect(!text.contains("\"path\""))
     #expect(!text.contains("schema_version"))
     #expect(text.contains("\"black\" : null"))
     #expect(text.contains("\"white\" : null"))
@@ -164,7 +159,7 @@ import NPYCore
     #expect(FileManager.default.fileExists(atPath: templateURL.path))
 }
 
-@Test func rejectsMissingBaseImagePath() {
+@Test func rejectsUnknownSourceImagePath() {
     let data = Data("""
     {
       "source_image": {
@@ -180,21 +175,19 @@ import NPYCore
     }
     """.utf8)
 
-    expectDecodingError("missing base image path") {
+    expectDecodingError("unknown source image path") {
         _ = try JSONDecoder().decode(Template.self, from: data)
     }
 }
 
-@Test func savingExistingTemplateWritesBaseImagePath() throws {
+@Test func savingExistingTemplateKeepsPathFreeSchema() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let templateURL = directory.appendingPathComponent("template.json")
 
     let text = """
     {
-      "base_image_path": "/tmp/old-source.npy",
       "source_image": {
-        "path": "/tmp/old-source.npy",
         "width": 20,
         "height": 10
       },
@@ -216,9 +209,10 @@ import NPYCore
         elementsSpec: nil
     )
 
-    #expect(document.template.baseImagePath == "/tmp/source.npy")
+    #expect(document.template.sourceImage == SourceImage(width: 20, height: 10))
     let saved = try String(contentsOf: templateURL, encoding: .utf8)
-    #expect(saved.contains("\"base_image_path\" : \"/tmp/source.npy\""))
+    #expect(!saved.contains("base_image_path"))
+    #expect(!saved.contains("\"path\""))
     #expect(!saved.contains("schema_version"))
 }
 
@@ -228,7 +222,7 @@ import NPYCore
     let document = TemplateDocument(
         url: directory.appendingPathComponent("template.json"),
         template: Template(
-            sourceImage: SourceImage(path: "/tmp/source.npy", width: 20, height: 10),
+            sourceImage: SourceImage(width: 20, height: 10),
             barROIs: [
                 BarROI(group: 4, element: 1, orientation: "X"),
                 BarROI(group: 4, element: 1, orientation: "Y")
@@ -251,7 +245,7 @@ import NPYCore
     let templateURL = directory.appendingPathComponent("template.json")
 
     let original = Template(
-        sourceImage: SourceImage(path: "/tmp/source.npy", width: 20, height: 10),
+        sourceImage: SourceImage(width: 20, height: 10),
         barROIs: [
             BarROI(group: 9, element: 2, orientation: "Y", rect: PixelRect(x0: 1, y0: 1, x1: 3, y1: 4))
         ]
@@ -278,9 +272,7 @@ import NPYCore
 
     let text = """
     {
-      "base_image_path": "/tmp/source.npy",
       "source_image": {
-        "path": "/tmp/source.npy",
         "width": 20,
         "height": 10
       },

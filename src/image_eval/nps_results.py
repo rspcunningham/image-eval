@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-import argparse
-import csv
-import json
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, NamedTuple, Sequence
 
 import numpy as np
 
 from image_eval.mtf_profiles import NormalizedImage, normalize_image_intensity
-from image_eval.nps_plot import save_nps_curve_plot, save_nps_spectrum_plot
 from image_eval.roi import Rect, finite_crop_image
-from image_eval.template_io import base_image_path, load_2d_npy, load_template
 
 
 NPS_MAX_RADIAL_FREQUENCY_CYCLES_PER_PIXEL = 0.5
@@ -24,12 +17,6 @@ NPS_MAX_RADIAL_BINS = 128
 class SpatialFrequencyCalibration:
     unit: str
     cycles_per_pixel_multiplier: float
-
-    @property
-    def csv_column(self) -> str:
-        if self.unit == "lp/mm":
-            return "LP per MM"
-        return f"frequency {self.unit}"
 
     def convert(self, frequency_cycles_per_pixel: np.ndarray) -> np.ndarray:
         scale = self.cycles_per_pixel_multiplier
@@ -70,34 +57,6 @@ class NPSReport(NamedTuple):
     results: list[NPSResult]
     spectra: list[NPSSpectrum]
     frequency_calibration: SpatialFrequencyCalibration
-
-
-class NPSReportPaths(NamedTuple):
-    output_dir: Path
-    csv_path: Path
-    plot_path: Path
-    spectrum_dir: Path
-    spectrum_paths: list[Path]
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Calculate black and white ROI NPS from a .npy image and visible ROI template."
-    )
-    parser.add_argument("template_json", type=Path)
-    parser.add_argument("output_dir", type=Path)
-    args = parser.parse_args(argv)
-
-    try:
-        template = load_template(args.template_json)
-        image = load_2d_npy(base_image_path(args.template_json, template))
-        report = calculate_nps_report(image, template)
-        save_nps_report(report, args.output_dir)
-    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
-        print(f"calculate-nps: error: {error}", file=sys.stderr)
-        return 1
-
-    return 0
 
 
 def calculate_nps_results(
@@ -203,67 +162,6 @@ def nps_results_from_spectra(spectra: Sequence[NPSSpectrum]) -> list[NPSResult]:
     return results
 
 
-def save_nps_report(report: NPSReport, output_dir: Path) -> NPSReportPaths:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / "nps.csv"
-    plot_path = output_dir / "nps.png"
-    spectrum_dir = output_dir / "nps_spectra"
-    spectrum_dir.mkdir(parents=True, exist_ok=True)
-
-    save_nps_results_csv(
-        report.results,
-        csv_path,
-        frequency_calibration=report.frequency_calibration,
-    )
-    save_nps_curve_plot(
-        report.results,
-        plot_path,
-        frequency_unit=report.frequency_calibration.unit,
-    )
-
-    spectrum_paths = []
-    for spectrum in report.spectra:
-        path = spectrum_dir / f"{spectrum.roi_name}_2d.png"
-        save_nps_spectrum_plot(
-            spectrum,
-            path,
-            frequency_unit=report.frequency_calibration.unit,
-        )
-        spectrum_paths.append(path)
-
-    return NPSReportPaths(
-        output_dir=output_dir,
-        csv_path=csv_path,
-        plot_path=plot_path,
-        spectrum_dir=spectrum_dir,
-        spectrum_paths=spectrum_paths,
-    )
-
-
-def save_nps_results_csv(
-    results: Sequence[NPSResult],
-    output_path: Path,
-    *,
-    frequency_calibration: SpatialFrequencyCalibration = CYCLES_PER_PIXEL_FREQUENCY,
-) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    columns = nps_csv_columns(frequency_calibration)
-    with output_path.open("w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=columns)
-        writer.writeheader()
-        for result in results:
-            writer.writerow({
-                columns[0]: _format_float(result.frequency),
-                "black NPS": _format_optional_float(result.black_nps),
-                "white NPS": _format_optional_float(result.white_nps),
-                "average NPS": _format_optional_float(result.average_nps),
-            })
-
-
-def nps_csv_columns(frequency_calibration: SpatialFrequencyCalibration) -> list[str]:
-    return [frequency_calibration.csv_column, "black NPS", "white NPS", "average NPS"]
-
-
 def _normalization_roi_crops(
     normalized: NormalizedImage,
 ) -> tuple[tuple[str, Rect, np.ndarray], tuple[str, Rect, np.ndarray]]:
@@ -344,16 +242,3 @@ def _mean_available(*values: float | None) -> float | None:
         return None
     return float(np.mean(available))
 
-
-def _format_optional_float(value: float | None) -> str:
-    if value is None:
-        return ""
-    return _format_float(value)
-
-
-def _format_float(value: float) -> str:
-    return f"{value:.12g}"
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
