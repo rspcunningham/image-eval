@@ -21,6 +21,7 @@ class ImageEvalCLITests(unittest.TestCase):
             stdout = io.StringIO()
             with redirect_stdout(stdout):
                 exit_code = main([
+                    "eval",
                     "--base-url",
                     str(image_path),
                     "--template",
@@ -50,6 +51,7 @@ class ImageEvalCLITests(unittest.TestCase):
             output_dir = root / "outputs"
 
             exit_code = main([
+                "eval",
                 "--base-url",
                 image_path.as_uri(),
                 "--template",
@@ -76,6 +78,7 @@ class ImageEvalCLITests(unittest.TestCase):
             output_dir = root / "outputs"
 
             exit_code = main([
+                "eval",
                 "--base-url",
                 str(image_path),
                 "--template",
@@ -99,6 +102,7 @@ class ImageEvalCLITests(unittest.TestCase):
             output_dir = root / "outputs"
 
             exit_code = main([
+                "eval",
                 "--base-url",
                 str(image_path),
                 "--template",
@@ -116,6 +120,12 @@ class ImageEvalCLITests(unittest.TestCase):
             self.assertTrue((output_dir / "nps.png").exists())
             self.assertFalse((output_dir / "dqe.png").exists())
             self.assertFalse((output_dir / "roi_fits").exists())
+
+    def test_missing_subcommand_exits_with_usage_error(self) -> None:
+        with self.assertRaises(SystemExit) as error:
+            main([])
+
+        self.assertEqual(error.exception.code, 2)
 
 
 def _write_inputs(root: Path) -> tuple[Path, Path]:

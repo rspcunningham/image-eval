@@ -6,18 +6,37 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from image_eval.artifacts import DEFAULT_PLOTS, normalize_plot_kinds, write_evaluation_artifacts
-from image_eval.evaluation import evaluate_image, evaluation_result_to_dict
-from image_eval.sources import load_image_source, load_template_source
+from image_eval.initialize import add_init_arguments, run_init
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    return args.handler(args)
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="image-eval",
-        description=(
-            "Evaluate a subject .npy image from an explicit base image and ROI template, "
-            "returning JSON data and optional plots."
-        ),
+        description="Create ROI templates and evaluate .npy images.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = subparsers.add_parser("init", help="Create or edit an ROI template.")
+    add_init_arguments(init_parser)
+    init_parser.set_defaults(handler=run_init)
+
+    eval_parser = subparsers.add_parser("eval", help="Evaluate a subject image.")
+    _add_eval_arguments(eval_parser)
+    eval_parser.set_defaults(handler=_run_eval)
+
+    return parser
+
+
+def _add_eval_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.description = (
+        "Evaluate a subject .npy image from an explicit base image and ROI template, "
+        "returning JSON data and optional plots."
     )
     parser.add_argument("--base-url", required=True, help="Base/reference .npy path or URL.")
     parser.add_argument("--template", required=True, help="ROI template JSON path or URL.")
@@ -32,7 +51,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "mtf,nps,dqe,registration,roi-fits,nps-spectra."
         ),
     )
-    args = parser.parse_args(argv)
+
+
+def _run_eval(args: argparse.Namespace) -> int:
+    from image_eval.artifacts import write_evaluation_artifacts
+    from image_eval.evaluation import evaluate_image, evaluation_result_to_dict
+    from image_eval.sources import load_image_source, load_template_source
 
     try:
         if args.no_plots and args.plots:
@@ -67,6 +91,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _plot_kinds_from_args(plots: str | None, *, no_plots: bool) -> set[str] | frozenset[str]:
+    from image_eval.artifacts import DEFAULT_PLOTS, normalize_plot_kinds
+
     if no_plots:
         return set()
     if plots is None:
