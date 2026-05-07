@@ -36,7 +36,7 @@ def plot_dqe_curve(results: Sequence[DQEResult]) -> Figure:
     if results:
         axis.plot(frequencies, dqe, marker="o", linewidth=2.0, label="DQE")
         axis.legend(loc="best")
-    axis.set_xlabel("Spatial frequency (lp/mm)")
+    axis.set_xlabel("Spatial frequency (cycles/mm)")
     axis.set_ylabel("DQE")
     axis.set_title("Detective Quantum Efficiency")
     axis.grid(True, color="#dddddd", linewidth=0.7)

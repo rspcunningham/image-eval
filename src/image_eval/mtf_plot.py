@@ -55,7 +55,7 @@ def bar_roi_fit_plot_title(
     roi = fitted_profile.roi_profile
     title = (
         f"G{roi.group} E{roi.element} {roi.orientation} "
-        f"({roi.frequency_lp_per_mm:.3g} lp/mm)"
+        f"({roi.frequency_lp_per_mm:.3g} cycles/mm)"
     )
     if mtf_value is not None:
         title = f"{title} - MTF {mtf_value:.4g}"
@@ -119,7 +119,7 @@ def plot_mtf_curves(results: Sequence[MTFResult]) -> Figure:
     axis.plot(frequencies, x_mtf, marker="o", linewidth=1.8, label="X MTF")
     axis.plot(frequencies, y_mtf, marker="s", linewidth=1.8, label="Y MTF")
     axis.plot(frequencies, average_mtf, marker="^", linewidth=2.2, label="Average MTF")
-    axis.set_xlabel("Spatial frequency (lp/mm)")
+    axis.set_xlabel("Spatial frequency (cycles/mm)")
     axis.set_ylabel("MTF")
     axis.set_title("MTF by USAF 1951 Spatial Frequency")
     axis.grid(True, color="#dddddd", linewidth=0.7)

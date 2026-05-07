@@ -38,9 +38,9 @@ class ImageEvalCLITests(unittest.TestCase):
             self.assertEqual(report["image_shapes"]["base"], {"height": 16, "width": 16})
             self.assertNotIn("base_image_path", report["registered_template"])
             self.assertNotIn("path", report["registered_template"]["source_image"])
-            self.assertEqual(report["mtf"]["frequency_unit"], "lp/mm")
-            self.assertEqual(report["nps"]["frequency_unit"], "lp/mm")
-            self.assertEqual(report["dqe"]["frequency_unit"], "lp/mm")
+            self.assertEqual(report["mtf"]["frequency_unit"], "cycles/mm")
+            self.assertEqual(report["nps"]["frequency_unit"], "cycles/mm")
+            self.assertEqual(report["dqe"]["frequency_unit"], "cycles/mm")
             self.assertGreaterEqual(len(report["mtf"]["rows"]), 1)
             self.assertGreaterEqual(len(report["nps"]["rows"]), 1)
 

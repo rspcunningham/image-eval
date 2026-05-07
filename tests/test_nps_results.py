@@ -44,7 +44,7 @@ class NPSResultsTests(unittest.TestCase):
         image = np.zeros((4, 8), dtype=np.float64)
         image[:, 4:8] = 1.0
         calibration = SpatialFrequencyCalibration(
-            unit="lp/mm",
+            unit="cycles/mm",
             cycles_per_pixel_multiplier=2.0,
         )
 

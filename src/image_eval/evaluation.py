@@ -57,7 +57,7 @@ def evaluate_image(
         subject_image,
         registered_template,
         frequency_calibration=SpatialFrequencyCalibration(
-            unit="lp/mm",
+            unit="cycles/mm",
             cycles_per_pixel_multiplier=pixels_per_mm,
         ),
     )
@@ -86,7 +86,7 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, Any]:
         "registration": result.registration,
         "registered_template": result.registered_template,
         "mtf": {
-            "frequency_unit": "lp/mm",
+            "frequency_unit": "cycles/mm",
             "rows": [
                 {
                     "frequency": row.frequency_lp_per_mm,
@@ -110,7 +110,7 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, Any]:
             ],
         },
         "dqe": {
-            "frequency_unit": "lp/mm",
+            "frequency_unit": "cycles/mm",
             "rows": [
                 {
                     "frequency": row.frequency_lp_per_mm,
