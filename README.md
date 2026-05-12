@@ -18,19 +18,11 @@ Silicon macOS.
 Create or edit an ROI template from a base image:
 
 ```bash
-image-eval init samples/raw.npy template.json --groups 4-7 --elements 1-6
+image-eval init base_image.npy template.json --groups 4-7 --elements 1-6
 ```
 
-Evaluate the raw image:
+Evaluate an image against a base image and template:
 
 ```bash
-image-eval eval --base-url samples/raw.npy --template template.json --subject-url samples/raw.npy --out outputs/raw
+image-eval eval --base-url base_image.npy --template template.json --subject-url subject_image.npy --json
 ```
-
-Evaluate the reconstruction:
-
-```bash
-image-eval eval --base-url samples/raw.npy --template template.json --subject-url samples/reconstruction.npy --out outputs/reconstruction
-```
-
-Each evaluation writes `report.json`. Use `--json` to print the JSON report to stdout.
