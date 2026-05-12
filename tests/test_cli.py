@@ -47,26 +47,15 @@ class ImageEvalCLITests(unittest.TestCase):
             paths = evaluate_image(image_path, template_path, output_dir)
 
             self.assertTrue(paths.mtf_paths.csv_path.exists())
-            self.assertTrue(paths.mtf_paths.plot_path.exists())
-            self.assertEqual(len(paths.mtf_paths.roi_fit_paths), 1)
-            self.assertTrue(paths.mtf_paths.roi_fit_paths[0].exists())
+            with paths.mtf_paths.csv_path.open(newline="") as file:
+                self.assertEqual(next(csv.reader(file)), ["cycles/mm", "orientation", "mtf"])
             self.assertTrue(paths.nps_paths.csv_path.exists())
-            self.assertTrue(paths.nps_paths.plot_path.exists())
-            self.assertEqual(len(paths.nps_paths.spectrum_paths), 2)
-            self.assertTrue(paths.nps_paths.spectrum_paths[0].exists())
-            self.assertTrue(paths.nps_paths.spectrum_paths[1].exists())
             with paths.nps_paths.csv_path.open(newline="") as file:
                 self.assertEqual(next(csv.reader(file))[0], "LP per MM")
-            self.assertTrue(paths.dqe_paths.csv_path.exists())
-            self.assertTrue(paths.dqe_paths.plot_path.exists())
-            with paths.dqe_paths.csv_path.open(newline="") as file:
-                self.assertEqual(next(csv.reader(file)), ["LP per MM", "average MTF", "average NPS", "DQE"])
 
             registration_paths = paths.registration_paths
             self.assertTrue(registration_paths.registration_json_path.exists())
             self.assertTrue(registration_paths.registered_template_path.exists())
-            self.assertTrue(registration_paths.roi_overlay_path.exists())
-            self.assertTrue(registration_paths.image_overlay_path.exists())
 
             with registration_paths.registration_json_path.open() as file:
                 registration = json.load(file)

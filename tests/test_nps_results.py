@@ -77,19 +77,16 @@ class NPSResultsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             calculate_nps_report(image, _template())
 
-    def test_saves_report_directory_with_summary_and_spectrum_plots(self) -> None:
+    def test_saves_report_directory_with_summary_csv_only(self) -> None:
         image = np.zeros((4, 8), dtype=np.float64)
         image[:, 4:8] = 1.0
         report = calculate_nps_report(image, _template())
 
         with tempfile.TemporaryDirectory() as directory:
-            paths = save_nps_report(report, Path(directory))
+            root = Path(directory)
+            paths = save_nps_report(report, root)
 
             self.assertTrue(paths.csv_path.exists())
-            self.assertTrue(paths.plot_path.exists())
-            self.assertEqual(len(paths.spectrum_paths), 2)
-            self.assertEqual(paths.spectrum_paths[0].read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
-            self.assertEqual(paths.spectrum_paths[1].read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
 
     def test_saves_requested_csv_columns(self) -> None:
         results = [
@@ -130,9 +127,6 @@ class NPSResultsTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertTrue((output_dir / "nps.csv").exists())
-            self.assertTrue((output_dir / "nps.png").exists())
-            self.assertTrue((output_dir / "nps_spectra" / "black_2d.png").exists())
-            self.assertTrue((output_dir / "nps_spectra" / "white_2d.png").exists())
 
 
 def _template(*, width: int = 8, height: int = 4, split: int = 4) -> dict:

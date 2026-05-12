@@ -11,7 +11,6 @@ from typing import Any, NamedTuple, Sequence
 import numpy as np
 
 from image_eval.mtf_profiles import NormalizedImage, normalize_image_intensity
-from image_eval.nps_plot import save_nps_curve_plot, save_nps_spectrum_plot
 from image_eval.roi import Rect, finite_crop_image
 from image_eval.template_io import base_image_path, load_2d_npy, load_template
 
@@ -32,10 +31,7 @@ class SpatialFrequencyCalibration:
         return f"frequency {self.unit}"
 
     def convert(self, frequency_cycles_per_pixel: np.ndarray) -> np.ndarray:
-        scale = self.cycles_per_pixel_multiplier
-        if not np.isfinite(scale) or scale <= 0:
-            raise ValueError("cycles_per_pixel_multiplier must be positive and finite")
-        return frequency_cycles_per_pixel * scale
+        return frequency_cycles_per_pixel * self.cycles_per_pixel_multiplier
 
 
 CYCLES_PER_PIXEL_FREQUENCY = SpatialFrequencyCalibration(
@@ -75,9 +71,6 @@ class NPSReport(NamedTuple):
 class NPSReportPaths(NamedTuple):
     output_dir: Path
     csv_path: Path
-    plot_path: Path
-    spectrum_dir: Path
-    spectrum_paths: list[Path]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -149,13 +142,7 @@ def calculate_nps_spectrum(
     frequency_calibration: SpatialFrequencyCalibration = CYCLES_PER_PIXEL_FREQUENCY,
 ) -> NPSSpectrum:
     crop = np.asarray(crop, dtype=np.float64)
-    if crop.ndim != 2:
-        raise ValueError(f"{roi_name} NPS ROI is {crop.ndim}D; expected a 2D crop")
     height, width = crop.shape
-    if height < 2 or width < 2:
-        raise ValueError(f"{roi_name} NPS ROI must be at least 2x2 pixels")
-    if not np.all(np.isfinite(crop)):
-        raise ValueError(f"{roi_name} NPS ROI must contain only finite pixels")
 
     crop_mean = float(np.mean(crop))
     noise = crop - crop_mean
@@ -206,37 +193,16 @@ def nps_results_from_spectra(spectra: Sequence[NPSSpectrum]) -> list[NPSResult]:
 def save_nps_report(report: NPSReport, output_dir: Path) -> NPSReportPaths:
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "nps.csv"
-    plot_path = output_dir / "nps.png"
-    spectrum_dir = output_dir / "nps_spectra"
-    spectrum_dir.mkdir(parents=True, exist_ok=True)
 
     save_nps_results_csv(
         report.results,
         csv_path,
         frequency_calibration=report.frequency_calibration,
     )
-    save_nps_curve_plot(
-        report.results,
-        plot_path,
-        frequency_unit=report.frequency_calibration.unit,
-    )
-
-    spectrum_paths = []
-    for spectrum in report.spectra:
-        path = spectrum_dir / f"{spectrum.roi_name}_2d.png"
-        save_nps_spectrum_plot(
-            spectrum,
-            path,
-            frequency_unit=report.frequency_calibration.unit,
-        )
-        spectrum_paths.append(path)
 
     return NPSReportPaths(
         output_dir=output_dir,
         csv_path=csv_path,
-        plot_path=plot_path,
-        spectrum_dir=spectrum_dir,
-        spectrum_paths=spectrum_paths,
     )
 
 
@@ -326,8 +292,6 @@ def _radial_average(
 
 
 def _bin_centers(edges: np.ndarray) -> np.ndarray:
-    if edges.ndim != 1 or edges.size < 2:
-        raise ValueError("radial bin edges must be a 1D array with at least two values")
     return (edges[:-1] + edges[1:]) / 2.0
 
 

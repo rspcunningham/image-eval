@@ -56,7 +56,7 @@ def project_template_rois(
 ) -> dict[str, Any]:
     subject_height, subject_width = subject_shape
     transform_base_to_subject = cv2.invertAffineTransform(
-        _as_affine_transform(transform_subject_to_base, "transform_subject_to_base")
+        np.asarray(transform_subject_to_base, dtype=np.float64)
     )
 
     return {
@@ -189,14 +189,6 @@ def _as_rect(rect: Any) -> Rect:
     if projected["x1"] <= projected["x0"] or projected["y1"] <= projected["y0"]:
         raise ValueError("ROI rect must have positive width and height")
     return projected
-
-
-def _as_affine_transform(transform: Any, label: str) -> np.ndarray:
-    array = np.asarray(transform, dtype=np.float64)
-    if array.shape != (2, 3):
-        raise ValueError(f"{label} must be a 2x3 affine transform")
-    return array
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

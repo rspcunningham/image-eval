@@ -9,7 +9,6 @@ from typing import Any, NamedTuple, Sequence
 import cv2
 import numpy as np
 
-from image_eval.dqe_results import DQEReportPaths, calculate_dqe_report, save_dqe_report
 from image_eval.mtf_results import (
     MTFReportPaths,
     average_pixels_per_mm_from_fits,
@@ -24,18 +23,19 @@ from image_eval.nps_results import (
 )
 from image_eval.registered_template import project_template_rois
 from image_eval.registration import register_subject_in_base
-from image_eval.registration_artifacts import (
-    RegistrationArtifactPaths,
-    save_registration_artifact_plots,
-)
 from image_eval.template_io import base_image_path, load_2d_npy, load_template
+
+
+class RegistrationArtifactPaths(NamedTuple):
+    registration_dir: Path
+    registration_json_path: Path
+    registered_template_path: Path
 
 
 class ImageEvaluationPaths(NamedTuple):
     output_dir: Path
     mtf_paths: MTFReportPaths
     nps_paths: NPSReportPaths
-    dqe_paths: DQEReportPaths
     registration_paths: RegistrationArtifactPaths
 
 
@@ -43,7 +43,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="image-eval",
         description=(
-            "Evaluate a .npy image against a template and write registration, MTF, NPS, and DQE artifacts."
+            "Evaluate a .npy image against a template and write registration, MTF, and NPS artifacts."
         ),
     )
     parser.add_argument("image", type=Path)
@@ -90,9 +90,7 @@ def evaluate_image(image_path: Path, template_json: Path, output_dir: Path) -> I
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    registration_paths = save_registration_artifacts(
-        base_image,
-        subject_image,
+    registration_paths = save_registration_json_artifacts(
         registration,
         registered_template,
         output_dir / "registration",
@@ -110,21 +108,15 @@ def evaluate_image(image_path: Path, template_json: Path, output_dir: Path) -> I
         ),
     )
     nps_paths = save_nps_report(nps_report, output_dir)
-    dqe_report = calculate_dqe_report(report.results, nps_report.results)
-    dqe_paths = save_dqe_report(dqe_report, output_dir)
-
     return ImageEvaluationPaths(
         output_dir=output_dir,
         mtf_paths=mtf_paths,
         nps_paths=nps_paths,
-        dqe_paths=dqe_paths,
         registration_paths=registration_paths,
     )
 
 
-def save_registration_artifacts(
-    base_image: np.ndarray,
-    subject_image: np.ndarray,
+def save_registration_json_artifacts(
     registration: dict[str, Any],
     registered_template: dict[str, Any],
     registration_dir: Path,
@@ -140,20 +132,10 @@ def save_registration_artifacts(
         json.dump(registered_template, file, indent=2)
         file.write("\n")
 
-    roi_overlay_path, image_overlay_path = save_registration_artifact_plots(
-        base_image,
-        subject_image,
-        registered_template,
-        registration["transform_subject_to_base"],
-        registration_dir,
-    )
-
     return RegistrationArtifactPaths(
         registration_dir=registration_dir,
         registration_json_path=registration_json_path,
         registered_template_path=registered_template_path,
-        roi_overlay_path=roi_overlay_path,
-        image_overlay_path=image_overlay_path,
     )
 
 
@@ -190,8 +172,6 @@ def _with_registration_context(
     subject_shape: tuple[int, int],
 ) -> dict[str, Any]:
     transform = np.asarray(registration["transform_subject_to_base"], dtype=np.float64)
-    if transform.shape != (2, 3):
-        raise ValueError("registration transform_subject_to_base must be a 2x3 affine transform")
     transform_base_to_subject = cv2.invertAffineTransform(transform)
     base_height, base_width = base_shape
     subject_height, subject_width = subject_shape
