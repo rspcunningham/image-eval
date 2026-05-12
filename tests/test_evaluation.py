@@ -23,11 +23,17 @@ class EvaluationTests(unittest.TestCase):
 
             report = evaluation_result_to_dict(result)
             self.assertEqual(list(root.iterdir()), [])
+            self.assertNotIn("schema_version", report)
+            self.assertNotIn("dqe", report)
             self.assertEqual(report["registration"]["mode"], "identity")
             self.assertNotIn("base_image_path", report["registered_template"])
             self.assertNotIn("path", report["registered_template"]["source_image"])
             self.assertGreaterEqual(len(report["mtf"]["rows"]), 1)
             self.assertGreaterEqual(len(report["nps"]["rows"]), 1)
+            self.assertEqual(
+                set(report["mtf"]["rows"][0]),
+                {"cycles_per_mm", "orientation", "mtf"},
+            )
 
     def test_rejects_template_shape_that_does_not_match_base_image(self) -> None:
         image = np.zeros((4, 8), dtype=np.float64)

@@ -33,18 +33,22 @@ class ImageEvalCLITests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             report = json.loads(stdout.getvalue())
-            self.assertEqual(report["schema_version"], 1)
+            self.assertNotIn("schema_version", report)
+            self.assertNotIn("dqe", report)
             self.assertEqual(report["registration"]["mode"], "identity")
             self.assertEqual(report["image_shapes"]["base"], {"height": 16, "width": 16})
             self.assertNotIn("base_image_path", report["registered_template"])
             self.assertNotIn("path", report["registered_template"]["source_image"])
             self.assertEqual(report["mtf"]["frequency_unit"], "cycles/mm")
             self.assertEqual(report["nps"]["frequency_unit"], "cycles/mm")
-            self.assertEqual(report["dqe"]["frequency_unit"], "cycles/mm")
             self.assertGreaterEqual(len(report["mtf"]["rows"]), 1)
             self.assertGreaterEqual(len(report["nps"]["rows"]), 1)
+            self.assertEqual(
+                set(report["mtf"]["rows"][0]),
+                {"cycles_per_mm", "orientation", "mtf"},
+            )
 
-    def test_out_writes_report_and_default_plot_artifacts(self) -> None:
+    def test_out_writes_only_json_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image_path, template_path = _write_inputs(root)
@@ -63,63 +67,34 @@ class ImageEvalCLITests(unittest.TestCase):
             ])
 
             self.assertEqual(exit_code, 0)
-            self.assertTrue((output_dir / "report.json").exists())
-            self.assertTrue((output_dir / "mtf.png").exists())
-            self.assertTrue((output_dir / "nps.png").exists())
-            self.assertTrue((output_dir / "dqe.png").exists())
-            self.assertTrue((output_dir / "roi_fits" / "001_g0_e1_x_fit.png").exists())
-            self.assertTrue((output_dir / "nps_spectra" / "black_2d.png").exists())
-            self.assertTrue((output_dir / "registration" / "registration.json").exists())
+            self.assertEqual([path.name for path in output_dir.iterdir()], ["report.json"])
+            report = json.loads((output_dir / "report.json").read_text())
+            self.assertNotIn("schema_version", report)
+            self.assertNotIn("dqe", report)
 
-    def test_no_plots_writes_only_json_report(self) -> None:
+    def test_removed_plot_flags_are_usage_errors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image_path, template_path = _write_inputs(root)
-            output_dir = root / "outputs"
 
-            exit_code = main([
-                "eval",
-                "--base-url",
-                str(image_path),
-                "--template",
-                str(template_path),
-                "--subject-url",
-                str(image_path),
-                "--out",
-                str(output_dir),
-                "--no-plots",
-            ])
+            for removed_flag in ("--plots", "--no-plots"):
+                args = [
+                    "eval",
+                    "--base-url",
+                    str(image_path),
+                    "--template",
+                    str(template_path),
+                    "--subject-url",
+                    str(image_path),
+                    removed_flag,
+                ]
+                if removed_flag == "--plots":
+                    args.append("mtf")
 
-            self.assertEqual(exit_code, 0)
-            self.assertTrue((output_dir / "report.json").exists())
-            self.assertFalse((output_dir / "mtf.png").exists())
-            self.assertFalse((output_dir / "registration").exists())
-
-    def test_plot_selection_writes_only_requested_plot_classes(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            image_path, template_path = _write_inputs(root)
-            output_dir = root / "outputs"
-
-            exit_code = main([
-                "eval",
-                "--base-url",
-                str(image_path),
-                "--template",
-                str(template_path),
-                "--subject-url",
-                str(image_path),
-                "--out",
-                str(output_dir),
-                "--plots",
-                "mtf,nps",
-            ])
-
-            self.assertEqual(exit_code, 0)
-            self.assertTrue((output_dir / "mtf.png").exists())
-            self.assertTrue((output_dir / "nps.png").exists())
-            self.assertFalse((output_dir / "dqe.png").exists())
-            self.assertFalse((output_dir / "roi_fits").exists())
+                with self.subTest(flag=removed_flag):
+                    with self.assertRaises(SystemExit) as error:
+                        main(args)
+                    self.assertEqual(error.exception.code, 2)
 
     def test_missing_subcommand_exits_with_usage_error(self) -> None:
         with self.assertRaises(SystemExit) as error:

@@ -6,7 +6,6 @@ from typing import Any
 import cv2
 import numpy as np
 
-from image_eval.dqe_results import DQEReport, calculate_dqe_report
 from image_eval.mtf_results import MTFReport, average_pixels_per_mm_from_fits, calculate_mtf_report
 from image_eval.nps_results import NPSReport, SpatialFrequencyCalibration, calculate_nps_report
 from image_eval.registered_template import project_template_rois
@@ -21,7 +20,6 @@ class EvaluationResult:
     registered_template: dict[str, Any]
     mtf_report: MTFReport
     nps_report: NPSReport
-    dqe_report: DQEReport
 
 
 def evaluate_image(
@@ -61,7 +59,6 @@ def evaluate_image(
             cycles_per_pixel_multiplier=pixels_per_mm,
         ),
     )
-    dqe_report = calculate_dqe_report(mtf_report.results, nps_report.results)
 
     return EvaluationResult(
         base_image=base_image,
@@ -70,7 +67,6 @@ def evaluate_image(
         registered_template=registered_template,
         mtf_report=mtf_report,
         nps_report=nps_report,
-        dqe_report=dqe_report,
     )
 
 
@@ -78,7 +74,6 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, Any]:
     base_height, base_width = result.base_image.shape
     subject_height, subject_width = result.subject_image.shape
     return _json_clean({
-        "schema_version": 1,
         "image_shapes": {
             "base": {"height": base_height, "width": base_width},
             "subject": {"height": subject_height, "width": subject_width},
@@ -89,10 +84,9 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, Any]:
             "frequency_unit": "cycles/mm",
             "rows": [
                 {
-                    "frequency": row.frequency_lp_per_mm,
-                    "x_mtf": row.x_mtf,
-                    "y_mtf": row.y_mtf,
-                    "average_mtf": row.average_mtf,
+                    "cycles_per_mm": row.cycles_per_mm,
+                    "orientation": row.orientation,
+                    "mtf": row.mtf,
                 }
                 for row in result.mtf_report.results
             ],
@@ -107,18 +101,6 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, Any]:
                     "average_nps": row.average_nps,
                 }
                 for row in result.nps_report.results
-            ],
-        },
-        "dqe": {
-            "frequency_unit": "cycles/mm",
-            "rows": [
-                {
-                    "frequency": row.frequency_lp_per_mm,
-                    "average_mtf": row.average_mtf,
-                    "average_nps": row.average_nps,
-                    "dqe": row.dqe,
-                }
-                for row in result.dqe_report.results
             ],
         },
     })

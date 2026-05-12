@@ -9,7 +9,6 @@ from image_eval.mtf_profiles import BarROIProfile
 
 
 SQUARE_WAVE_TERMS = 3
-BAR_PROFILE_CYCLES = 3.0
 CYCLE_SEARCH_MIN = 2.0
 CYCLE_SEARCH_MAX = 4.0
 CYCLE_SEARCH_STEPS = 401
@@ -52,30 +51,12 @@ def fit_bar_roi_profile(roi_profile: BarROIProfile) -> FittedBarROIProfile:
 
 def fit_square_wave_profile(
     profile: np.ndarray,
-    *,
-    terms: int = SQUARE_WAVE_TERMS,
-    cycles: float | None = None,
-    cycle_search_min: float = CYCLE_SEARCH_MIN,
-    cycle_search_max: float = CYCLE_SEARCH_MAX,
-    cycle_search_steps: int = CYCLE_SEARCH_STEPS,
 ) -> SquareWaveFit:
-    harmonics = odd_harmonics(terms)
-    profile = _as_1d_finite_profile(profile, parameter_count=2 + 2 * len(harmonics))
-    if cycles is None:
-        return _best_cycle_fit(
-            profile,
-            harmonics=harmonics,
-            terms=terms,
-            cycle_search_min=cycle_search_min,
-            cycle_search_max=cycle_search_max,
-            cycle_search_steps=cycle_search_steps,
-        )
-
-    return _fit_square_wave_profile_at_cycles(
+    harmonics = _odd_harmonics()
+    profile = _as_1d_finite_profile(profile)
+    return _best_cycle_fit(
         profile,
         harmonics=harmonics,
-        terms=terms,
-        cycles=cycles,
     )
 
 
@@ -83,35 +64,22 @@ def _best_cycle_fit(
     profile: np.ndarray,
     *,
     harmonics: np.ndarray,
-    terms: int,
-    cycle_search_min: float,
-    cycle_search_max: float,
-    cycle_search_steps: int,
 ) -> SquareWaveFit:
-    if not np.isfinite(cycle_search_min) or not np.isfinite(cycle_search_max):
-        raise ValueError("cycle search bounds must be finite")
-    if cycle_search_min <= 0 or cycle_search_max <= 0 or cycle_search_max < cycle_search_min:
-        raise ValueError(
-            "cycle search bounds must be positive with cycle_search_max >= cycle_search_min"
-        )
-    if not isinstance(cycle_search_steps, int) or isinstance(cycle_search_steps, bool):
-        raise ValueError(f"cycle_search_steps must be an integer, got {cycle_search_steps}")
-    if cycle_search_steps < 1:
-        raise ValueError(f"cycle_search_steps must be positive, got {cycle_search_steps}")
-
-    best_fit: SquareWaveFit | None = None
-    for candidate_cycles in np.linspace(cycle_search_min, cycle_search_max, cycle_search_steps):
+    candidate_cycles = np.linspace(CYCLE_SEARCH_MIN, CYCLE_SEARCH_MAX, CYCLE_SEARCH_STEPS)
+    best_fit = _fit_square_wave_profile_at_cycles(
+        profile,
+        harmonics=harmonics,
+        cycles=float(candidate_cycles[0]),
+    )
+    for cycles in candidate_cycles[1:]:
         fit = _fit_square_wave_profile_at_cycles(
             profile,
             harmonics=harmonics,
-            terms=terms,
-            cycles=float(candidate_cycles),
+            cycles=float(cycles),
         )
-        if best_fit is None or fit.residual_rms < best_fit.residual_rms:
+        if fit.residual_rms < best_fit.residual_rms:
             best_fit = fit
 
-    if best_fit is None:
-        raise RuntimeError("could not fit square-wave profile")
     return best_fit
 
 
@@ -119,16 +87,15 @@ def _fit_square_wave_profile_at_cycles(
     profile: np.ndarray,
     *,
     harmonics: np.ndarray,
-    terms: int,
     cycles: float,
 ) -> SquareWaveFit:
-    design = square_wave_design_matrix(len(profile), terms=terms, cycles=cycles)
+    design = _square_wave_design_matrix(len(profile), cycles=cycles)
     coefficients, _, _, _ = np.linalg.lstsq(design, profile, rcond=None)
     fitted_profile = design @ coefficients
     residuals = profile - fitted_profile
 
     return SquareWaveFit(
-        terms=terms,
+        terms=SQUARE_WAVE_TERMS,
         cycles=cycles,
         harmonics=harmonics,
         offset=float(coefficients[0]),
@@ -141,16 +108,13 @@ def _fit_square_wave_profile_at_cycles(
     )
 
 
-def square_wave_design_matrix(
+def _square_wave_design_matrix(
     sample_count: int,
     *,
-    terms: int = SQUARE_WAVE_TERMS,
-    cycles: float = BAR_PROFILE_CYCLES,
+    cycles: float,
 ) -> np.ndarray:
-    harmonics = odd_harmonics(terms)
+    harmonics = _odd_harmonics()
     _validate_sample_count(sample_count, parameter_count=2 + 2 * len(harmonics))
-    if not np.isfinite(cycles) or cycles <= 0:
-        raise ValueError(f"cycles must be positive and finite, got {cycles}")
 
     x = (np.arange(sample_count, dtype=np.float64) + 0.5) / sample_count
     centered_x = x - 0.5
@@ -162,19 +126,17 @@ def square_wave_design_matrix(
     return np.column_stack(columns)
 
 
-def odd_harmonics(terms: int = SQUARE_WAVE_TERMS) -> np.ndarray:
-    if not isinstance(terms, int) or isinstance(terms, bool) or terms < 1:
-        raise ValueError(f"terms must be a positive integer, got {terms}")
-    return np.arange(1, 2 * terms, 2, dtype=np.int64)
+def _odd_harmonics() -> np.ndarray:
+    return np.arange(1, 2 * SQUARE_WAVE_TERMS, 2, dtype=np.int64)
 
 
-def _as_1d_finite_profile(profile: np.ndarray, *, parameter_count: int) -> np.ndarray:
+def _as_1d_finite_profile(profile: np.ndarray) -> np.ndarray:
     profile = np.asarray(profile, dtype=np.float64)
     if profile.ndim != 1:
         raise ValueError(f"profile is {profile.ndim}D; expected a 1D array")
     if not np.all(np.isfinite(profile)):
         raise ValueError("profile must contain only finite values")
-    _validate_sample_count(len(profile), parameter_count=parameter_count)
+    _validate_sample_count(len(profile), parameter_count=2 + 2 * SQUARE_WAVE_TERMS)
     return profile
 
 

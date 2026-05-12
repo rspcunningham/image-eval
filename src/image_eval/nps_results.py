@@ -108,13 +108,7 @@ def calculate_nps_spectrum(
     frequency_calibration: SpatialFrequencyCalibration = CYCLES_PER_PIXEL_FREQUENCY,
 ) -> NPSSpectrum:
     crop = np.asarray(crop, dtype=np.float64)
-    if crop.ndim != 2:
-        raise ValueError(f"{roi_name} NPS ROI is {crop.ndim}D; expected a 2D crop")
     height, width = crop.shape
-    if height < 2 or width < 2:
-        raise ValueError(f"{roi_name} NPS ROI must be at least 2x2 pixels")
-    if not np.all(np.isfinite(crop)):
-        raise ValueError(f"{roi_name} NPS ROI must contain only finite pixels")
 
     crop_mean = float(np.mean(crop))
     noise = crop - crop_mean
@@ -224,8 +218,6 @@ def _radial_average(
 
 
 def _bin_centers(edges: np.ndarray) -> np.ndarray:
-    if edges.ndim != 1 or edges.size < 2:
-        raise ValueError("radial bin edges must be a 1D array with at least two values")
     return (edges[:-1] + edges[1:]) / 2.0
 
 
@@ -241,4 +233,3 @@ def _mean_available(*values: float | None) -> float | None:
     if not available:
         return None
     return float(np.mean(available))
-

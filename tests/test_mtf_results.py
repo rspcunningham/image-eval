@@ -1,47 +1,47 @@
 from __future__ import annotations
 
+import math
 import unittest
 
 import numpy as np
 
 from image_eval.mtf_profiles import BarROIProfile
 from image_eval.mtf_results import (
-    FUNDAMENTAL_TO_SQUARE_WAVE_MODULATION,
     average_pixels_per_mm_from_fits,
     calculate_mtf_results,
+    line_profile_mtf_points,
     mtf_results_from_fits,
     roi_pixels_per_mm,
 )
-from image_eval.square_wave_fit import fit_bar_roi_profiles, square_wave_design_matrix
+from image_eval.square_wave_fit import _square_wave_design_matrix, fit_bar_roi_profiles
 
 
 class MTFResultsTests(unittest.TestCase):
-    def test_groups_x_and_y_mtf_by_frequency_and_averages_both_orientations(self) -> None:
-        fitted_profiles = fit_bar_roi_profiles([
-            _roi_profile("X", fundamental_amplitude=0.2),
-            _roi_profile("Y", fundamental_amplitude=0.4),
-        ])
+    def test_line_profile_mtf_points_returns_fitted_odd_harmonics(self) -> None:
+        coefficients = np.array([0.5, 0.0, 0.2, 0.0, 0.1, 0.0, 0.04, 0.0])
+        profile = _square_wave_design_matrix(64, cycles=3.21) @ coefficients
+
+        points = line_profile_mtf_points(profile, 16.0)
+
+        self.assertEqual(list(points.keys()), [16.0, 48.0, 80.0])
+        self.assertAlmostEqual(points[16.0], 0.2 * math.pi / 2.0)
+        self.assertAlmostEqual(points[48.0], 0.1 * math.pi * 3 / 2.0)
+        self.assertAlmostEqual(points[80.0], 0.04 * math.pi * 5 / 2.0)
+
+    def test_mtf_results_preserve_duplicate_frequency_orientation_rows(self) -> None:
+        fitted_profiles = [
+            *_fits("X", fundamental_amplitude=0.2, third_amplitude=0.1, fifth_amplitude=0.04),
+            *_fits("X", fundamental_amplitude=0.3, third_amplitude=0.08, fifth_amplitude=0.02),
+        ]
 
         results = mtf_results_from_fits(fitted_profiles)
 
-        self.assertEqual(len(results), 1)
-        expected_x = 0.2 * FUNDAMENTAL_TO_SQUARE_WAVE_MODULATION
-        expected_y = 0.4 * FUNDAMENTAL_TO_SQUARE_WAVE_MODULATION
-        self.assertAlmostEqual(results[0].frequency_lp_per_mm, 16)
-        self.assertAlmostEqual(results[0].x_mtf or 0, expected_x)
-        self.assertAlmostEqual(results[0].y_mtf or 0, expected_y)
-        self.assertAlmostEqual(results[0].average_mtf, (expected_x + expected_y) / 2)
-
-    def test_average_uses_available_orientation_when_other_orientation_is_missing(self) -> None:
-        fitted_profiles = fit_bar_roi_profiles([_roi_profile("X", fundamental_amplitude=0.2)])
-
-        results = mtf_results_from_fits(fitted_profiles)
-
-        self.assertAlmostEqual(
-            results[0].average_mtf,
-            0.2 * FUNDAMENTAL_TO_SQUARE_WAVE_MODULATION,
-        )
-        self.assertIsNone(results[0].y_mtf)
+        self.assertEqual(len(results), 6)
+        self.assertEqual([result.cycles_per_mm for result in results], [16, 48, 80, 16, 48, 80])
+        self.assertEqual([result.orientation for result in results], ["X"] * 6)
+        self.assertAlmostEqual(results[0].mtf, 0.2 * math.pi / 2.0)
+        self.assertAlmostEqual(results[1].mtf, 0.1 * math.pi * 3 / 2.0)
+        self.assertAlmostEqual(results[3].mtf, 0.3 * math.pi / 2.0)
 
     def test_calculates_pixels_per_millimetre_from_fitted_cycles(self) -> None:
         fitted_profile = fit_bar_roi_profiles([_roi_profile("X", fundamental_amplitude=0.2)])[0]
@@ -94,15 +94,46 @@ class MTFResultsTests(unittest.TestCase):
 
         results = calculate_mtf_results(image, template)
 
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].frequency_lp_per_mm, 1)
-        self.assertIsNotNone(results[0].x_mtf)
-        self.assertIsNone(results[0].y_mtf)
+        self.assertEqual(len(results), 3)
+        self.assertEqual([result.cycles_per_mm for result in results], [1, 3, 5])
+        self.assertEqual([result.orientation for result in results], ["X", "X", "X"])
 
 
-def _roi_profile(orientation: str, *, fundamental_amplitude: float) -> BarROIProfile:
-    profile = square_wave_design_matrix(64) @ np.array(
-        [0.5, 0.0, fundamental_amplitude, 0.0, 0.0, 0.0, 0.0, 0.0]
+def _fits(
+    orientation: str,
+    *,
+    fundamental_amplitude: float,
+    third_amplitude: float = 0.0,
+    fifth_amplitude: float = 0.0,
+):
+    return fit_bar_roi_profiles([
+        _roi_profile(
+            orientation,
+            fundamental_amplitude=fundamental_amplitude,
+            third_amplitude=third_amplitude,
+            fifth_amplitude=fifth_amplitude,
+        )
+    ])
+
+
+def _roi_profile(
+    orientation: str,
+    *,
+    fundamental_amplitude: float,
+    third_amplitude: float = 0.0,
+    fifth_amplitude: float = 0.0,
+) -> BarROIProfile:
+    profile = _square_wave_design_matrix(64, cycles=3.0) @ np.array(
+        [
+            0.5,
+            0.0,
+            fundamental_amplitude,
+            0.0,
+            third_amplitude,
+            0.0,
+            fifth_amplitude,
+            0.0,
+        ]
     )
     return BarROIProfile(
         group=4,
