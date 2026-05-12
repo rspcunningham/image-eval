@@ -1,26 +1,17 @@
 from __future__ import annotations
 
-import csv
-import json
 import math
-import tempfile
 import unittest
-from pathlib import Path
 
 import numpy as np
 
 from image_eval.mtf_profiles import BarROIProfile
 from image_eval.mtf_results import (
-    MTF_CSV_COLUMNS,
     average_pixels_per_mm_from_fits,
     calculate_mtf_results,
-    calculate_mtf_report,
     line_profile_mtf_points,
-    main,
     mtf_results_from_fits,
     roi_pixels_per_mm,
-    save_mtf_report,
-    save_mtf_results_csv,
 )
 from image_eval.square_wave_fit import _square_wave_design_matrix, fit_bar_roi_profiles
 
@@ -76,25 +67,6 @@ class MTFResultsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             average_pixels_per_mm_from_fits([])
 
-    def test_saves_requested_csv_columns_and_duplicate_rows(self) -> None:
-        results = mtf_results_from_fits([
-            *_fits("X", fundamental_amplitude=0.2),
-            *_fits("X", fundamental_amplitude=0.4),
-        ])
-
-        with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "mtf.csv"
-
-            save_mtf_results_csv(results, output_path)
-
-            with output_path.open(newline="") as file:
-                rows = list(csv.DictReader(file))
-            self.assertEqual(list(rows[0].keys()), MTF_CSV_COLUMNS)
-            self.assertEqual(rows[0]["cycles/mm"], "16")
-            self.assertEqual(rows[0]["orientation"], "X")
-            self.assertNotEqual(rows[0]["mtf"], "")
-            self.assertEqual([row["cycles/mm"] for row in rows].count("16"), 2)
-
     def test_calculates_results_from_image_and_template(self) -> None:
         image = np.array(
             [
@@ -125,77 +97,6 @@ class MTFResultsTests(unittest.TestCase):
         self.assertEqual(len(results), 3)
         self.assertEqual([result.cycles_per_mm for result in results], [1, 3, 5])
         self.assertEqual([result.orientation for result in results], ["X", "X", "X"])
-
-    def test_saves_report_directory_with_summary_csv_only(self) -> None:
-        image = np.array(
-            [
-                [0, 1, 0, 1, 0, 1, 0, 1],
-                [0, 1, 0, 1, 0, 1, 0, 1],
-                [0, 1, 0, 1, 0, 1, 0, 1],
-                [0, 1, 0, 1, 0, 1, 0, 1],
-            ],
-            dtype=np.float64,
-        )
-        template = {
-            "normalization_rois": {
-                "black": {"x0": 0, "y0": 0, "x1": 1, "y1": 4},
-                "white": {"x0": 1, "y0": 0, "x1": 2, "y1": 4},
-            },
-            "bar_rois": [
-                {
-                    "group": 0,
-                    "element": 1,
-                    "orientation": "X",
-                    "rect": {"x0": 0, "y0": 0, "x1": 8, "y1": 4},
-                }
-            ],
-        }
-        report = calculate_mtf_report(image, template)
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            paths = save_mtf_report(report, root)
-
-            self.assertTrue(paths.csv_path.exists())
-
-    def test_cli_loads_image_path_from_template_base_image_path(self) -> None:
-        image = np.array(
-            [
-                [0, 1, 0, 1, 0, 1, 0, 1],
-                [0, 1, 0, 1, 0, 1, 0, 1],
-                [0, 1, 0, 1, 0, 1, 0, 1],
-                [0, 1, 0, 1, 0, 1, 0, 1],
-            ],
-            dtype=np.float64,
-        )
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            image_path = root / "image.npy"
-            template_path = root / "template.json"
-            output_dir = root / "report"
-            np.save(image_path, image)
-            template_path.write_text(json.dumps({
-                "base_image_path": "image.npy",
-                "source_image": {"path": "image.npy", "width": 8, "height": 4},
-                "normalization_rois": {
-                    "black": {"x0": 0, "y0": 0, "x1": 1, "y1": 4},
-                    "white": {"x0": 1, "y0": 0, "x1": 2, "y1": 4},
-                },
-                "bar_rois": [
-                    {
-                        "group": 0,
-                        "element": 1,
-                        "orientation": "X",
-                        "rect": {"x0": 0, "y0": 0, "x1": 8, "y1": 4},
-                    }
-                ],
-            }))
-
-            exit_code = main([str(template_path), str(output_dir)])
-
-            self.assertEqual(exit_code, 0)
-            self.assertTrue((output_dir / "mtf.csv").exists())
 
 
 def _fits(

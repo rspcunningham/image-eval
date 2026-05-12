@@ -19,6 +19,9 @@ def register_subject_in_base(base_image: np.ndarray, subject_image: np.ndarray) 
     The returned transform maps x/y coordinates in subject_image into x/y coordinates
     in base_image.
     """
+    if base_image.ndim != 2 or subject_image.ndim != 2:
+        raise ValueError("base_image and subject_image must both be 2D arrays")
+
     prepared_base = _preprocess(base_image)
     prepared_subject = _preprocess(subject_image)
 

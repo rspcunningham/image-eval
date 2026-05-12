@@ -51,18 +51,15 @@ public struct PixelRect: Codable, Equatable, Sendable {
 }
 
 public struct SourceImage: Codable, Equatable, Sendable {
-    public var path: String
     public var width: Int
     public var height: Int
 
-    public init(path: String, width: Int, height: Int) {
-        self.path = path
+    public init(width: Int, height: Int) {
         self.width = width
         self.height = height
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case path
         case width
         case height
     }
@@ -70,7 +67,6 @@ public struct SourceImage: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         try rejectUnknownKeys(in: decoder, allowedKeys: CodingKeys.allCases, typeName: "SourceImage")
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.path = try container.decode(String.self, forKey: .path)
         self.width = try container.decode(Int.self, forKey: .width)
         self.height = try container.decode(Int.self, forKey: .height)
     }
@@ -150,25 +146,21 @@ public struct BarROI: Codable, Equatable, Sendable {
 }
 
 public struct Template: Codable, Equatable, Sendable {
-    public var baseImagePath: String
     public var sourceImage: SourceImage
     public var normalizationROIs: NormalizationROIs
     public var barROIs: [BarROI]
 
     public init(
         sourceImage: SourceImage,
-        baseImagePath: String? = nil,
         normalizationROIs: NormalizationROIs = NormalizationROIs(),
         barROIs: [BarROI]
     ) {
-        self.baseImagePath = baseImagePath ?? sourceImage.path
         self.sourceImage = sourceImage
         self.normalizationROIs = normalizationROIs
         self.barROIs = barROIs
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case baseImagePath = "base_image_path"
         case sourceImage = "source_image"
         case normalizationROIs = "normalization_rois"
         case barROIs = "bar_rois"
@@ -177,8 +169,6 @@ public struct Template: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         try rejectUnknownKeys(in: decoder, allowedKeys: CodingKeys.allCases, typeName: "Template")
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        try requireKey(.baseImagePath, in: container)
-        self.baseImagePath = try container.decode(String.self, forKey: .baseImagePath)
         self.sourceImage = try container.decode(SourceImage.self, forKey: .sourceImage)
         self.normalizationROIs = try container.decode(
             NormalizationROIs.self,

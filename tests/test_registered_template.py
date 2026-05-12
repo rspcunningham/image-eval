@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
 from image_eval.registered_template import project_template_rois
 
@@ -27,10 +26,10 @@ class ProjectTemplateROIsTests(unittest.TestCase):
             template,
             [[1, 0, 0], [0, 1, 0]],
             (100, 200),
-            Path("/tmp/subject.npy"),
         )
 
-        self.assertEqual(output["base_image_path"], "/tmp/subject.npy")
+        self.assertNotIn("base_image_path", output)
+        self.assertNotIn("path", output["source_image"])
         self.assertEqual(output["source_image"]["width"], 200)
         self.assertEqual(output["source_image"]["height"], 100)
         self.assertEqual(
@@ -67,7 +66,6 @@ class ProjectTemplateROIsTests(unittest.TestCase):
             template,
             [[2, 0, 10], [0, 2, 20]],
             (100, 100),
-            Path("/tmp/subject.npy"),
         )
 
         self.assertEqual(
@@ -104,7 +102,6 @@ class ProjectTemplateROIsTests(unittest.TestCase):
             template,
             [[1, 0, 0], [0, 1, 0]],
             (100, 100),
-            Path("/tmp/subject.npy"),
         )
 
         self.assertEqual(len(output["bar_rois"]), 1)
@@ -123,7 +120,6 @@ class ProjectTemplateROIsTests(unittest.TestCase):
             template,
             [[1, 0, 0], [0, 1, 0]],
             (100, 100),
-            Path("/tmp/subject.npy"),
         )
 
         self.assertIsNone(output["normalization_rois"]["black"])

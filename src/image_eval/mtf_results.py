@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-import argparse
-import csv
-import json
 import math
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, NamedTuple, Sequence
 
 import numpy as np
@@ -18,10 +13,6 @@ from image_eval.square_wave_fit import (
     fit_bar_roi_profiles,
     fit_square_wave_profile,
 )
-from image_eval.template_io import base_image_path, load_2d_npy, load_template
-
-
-MTF_CSV_COLUMNS = ["cycles/mm", "orientation", "mtf"]
 
 
 @dataclass(frozen=True)
@@ -34,31 +25,6 @@ class MTFResult:
 class MTFReport(NamedTuple):
     results: list[MTFResult]
     fitted_profiles: list[FittedBarROIProfile]
-
-
-class MTFReportPaths(NamedTuple):
-    output_dir: Path
-    csv_path: Path
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Calculate USAF 1951 bar-target MTF from a .npy image and visible ROI template."
-    )
-    parser.add_argument("template_json", type=Path)
-    parser.add_argument("output_dir", type=Path)
-    args = parser.parse_args(argv)
-
-    try:
-        template = load_template(args.template_json)
-        image = load_2d_npy(base_image_path(args.template_json, template))
-        report = calculate_mtf_report(image, template)
-        save_mtf_report(report, args.output_dir)
-    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
-        print(f"calculate-mtf: error: {error}", file=sys.stderr)
-        return 1
-
-    return 0
 
 
 def calculate_mtf_results(image: np.ndarray, template: dict[str, Any]) -> list[MTFResult]:
@@ -134,36 +100,3 @@ def average_pixels_per_mm_from_fits(fitted_profiles: Sequence[FittedBarROIProfil
     if not values:
         raise ValueError("cannot calculate pixels per millimetre without fitted ROI profiles")
     return float(np.mean(values))
-
-
-def save_mtf_report(report: MTFReport, output_dir: Path) -> MTFReportPaths:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / "mtf.csv"
-
-    save_mtf_results_csv(report.results, csv_path)
-
-    return MTFReportPaths(
-        output_dir=output_dir,
-        csv_path=csv_path,
-    )
-
-
-def save_mtf_results_csv(results: Sequence[MTFResult], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=MTF_CSV_COLUMNS)
-        writer.writeheader()
-        for result in results:
-            writer.writerow({
-                "cycles/mm": _format_float(result.cycles_per_mm),
-                "orientation": result.orientation,
-                "mtf": _format_float(result.mtf),
-            })
-
-
-def _format_float(value: float) -> str:
-    return f"{value:.12g}"
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
