@@ -11,8 +11,10 @@ from image_eval.square_wave_fit import (
     CYCLE_SEARCH_STEPS,
     SQUARE_WAVE_TERMS,
     _square_wave_design_matrix,
+    MAX_HARMONIC_CYCLES_PER_MM,
     calibrate_pixels_per_mm,
     fit_bar_roi_profiles,
+    harmonics_for_frequency,
     fit_square_wave_profile,
     fit_square_wave_profile_at_cycles,
 )
@@ -147,3 +149,24 @@ def _roi(profile: np.ndarray, *, frequency: float) -> BarROIProfile:
         profile_axis="x",
         profile=profile,
     )
+
+
+class HarmonicSelectionTests(unittest.TestCase):
+    def test_drops_harmonics_at_or_above_the_frequency_cap(self) -> None:
+        self.assertEqual(MAX_HARMONIC_CYCLES_PER_MM, 350.0)
+        np.testing.assert_array_equal(harmonics_for_frequency(64.0), [1, 3, 5])  # 320 < 350
+        np.testing.assert_array_equal(harmonics_for_frequency(70.0), [1, 3])  # 5 x 70 = 350
+        np.testing.assert_array_equal(harmonics_for_frequency(116.0), [1, 3])  # 348 < 350
+        np.testing.assert_array_equal(harmonics_for_frequency(128.0), [1])  # 384 > 350
+
+    def test_keeps_the_fundamental_above_the_cap(self) -> None:
+        np.testing.assert_array_equal(harmonics_for_frequency(456.0), [1])
+
+    def test_high_frequency_rois_fit_only_the_fundamental(self) -> None:
+        clean = _square_wave_design_matrix(64, cycles=3.0) @ np.array([0.5, 0, 0.3, 0, 0, 0, 0, 0])
+        fits = fit_bar_roi_profiles([_roi(clean, frequency=16.0), _roi(clean, frequency=200.0)])
+
+        np.testing.assert_array_equal(fits[0].fit.harmonics, [1, 3, 5])
+        np.testing.assert_array_equal(fits[1].fit.harmonics, [1])
+        self.assertEqual(len(fits[1].fit.sine_coefficients), 1)
+        self.assertEqual(fits[1].fit.terms, 1)

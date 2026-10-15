@@ -18,6 +18,10 @@ TAPER_FRACTION = 0.5
 # Free-period fits used to calibrate pixels per millimetre must at least reach this
 # fundamental MTF; poorly resolved elements would otherwise fit noise at any period.
 CALIBRATION_MIN_MTF = 0.3
+# Odd harmonics are fit only below this frequency (cycles/mm); the fundamental is always
+# fit. Above it, harmonics of the bar pattern fall past the optics' passband and the
+# sampling limit, so their coefficients would only fit noise.
+MAX_HARMONIC_CYCLES_PER_MM = 350.0
 
 
 @dataclass(frozen=True)
@@ -51,18 +55,30 @@ def fit_bar_roi_profiles(roi_profiles: Sequence[BarROIProfile]) -> list[FittedBa
     elements, then each ROI is refit with its cycle count fixed, so poorly resolved
     elements cannot pick whichever period best matches their noise.
     """
-    free_fits = [fit_square_wave_profile(roi_profile.profile) for roi_profile in roi_profiles]
+    harmonics = [harmonics_for_frequency(roi.frequency_lp_per_mm) for roi in roi_profiles]
+    free_fits = [
+        fit_square_wave_profile(roi.profile, harmonics=roi_harmonics)
+        for roi, roi_harmonics in zip(roi_profiles, harmonics, strict=True)
+    ]
     pixels_per_mm = calibrate_pixels_per_mm(roi_profiles, free_fits)
     return [
         FittedBarROIProfile(
-            roi_profile=roi_profile,
+            roi_profile=roi,
             fit=fit_square_wave_profile_at_cycles(
-                roi_profile.profile,
-                cycles=roi_profile.frequency_lp_per_mm * len(roi_profile.profile) / pixels_per_mm,
+                roi.profile,
+                cycles=roi.frequency_lp_per_mm * len(roi.profile) / pixels_per_mm,
+                harmonics=roi_harmonics,
             ),
         )
-        for roi_profile in roi_profiles
+        for roi, roi_harmonics in zip(roi_profiles, harmonics, strict=True)
     ]
+
+
+def harmonics_for_frequency(fundamental_cycles_per_mm: float) -> np.ndarray:
+    """Odd harmonics to fit: the fundamental, plus each harmonic below the frequency cap."""
+    harmonics = _odd_harmonics()
+    keep = (harmonics == 1) | (harmonics * fundamental_cycles_per_mm < MAX_HARMONIC_CYCLES_PER_MM)
+    return harmonics[keep]
 
 
 def calibrate_pixels_per_mm(
@@ -85,22 +101,28 @@ def calibrate_pixels_per_mm(
     return float(np.median(candidates))
 
 
-def fit_square_wave_profile_at_cycles(profile: np.ndarray, *, cycles: float) -> SquareWaveFit:
+def fit_square_wave_profile_at_cycles(
+    profile: np.ndarray,
+    *,
+    cycles: float,
+    harmonics: np.ndarray | None = None,
+) -> SquareWaveFit:
     return _fit_square_wave_profile_at_cycles(
         _as_1d_finite_profile(profile),
-        harmonics=_odd_harmonics(),
+        harmonics=_odd_harmonics() if harmonics is None else harmonics,
         cycles=cycles,
     )
 
 
 def fit_square_wave_profile(
     profile: np.ndarray,
+    *,
+    harmonics: np.ndarray | None = None,
 ) -> SquareWaveFit:
-    harmonics = _odd_harmonics()
     profile = _as_1d_finite_profile(profile)
     return _best_cycle_fit(
         profile,
-        harmonics=harmonics,
+        harmonics=_odd_harmonics() if harmonics is None else harmonics,
     )
 
 
@@ -133,7 +155,7 @@ def _fit_square_wave_profile_at_cycles(
     harmonics: np.ndarray,
     cycles: float,
 ) -> SquareWaveFit:
-    design = _square_wave_design_matrix(len(profile), cycles=cycles)
+    design = _square_wave_design_matrix(len(profile), cycles=cycles, harmonics=harmonics)
     weights = np.sqrt(_taper_weights(len(profile)))
     coefficients, _, _, _ = np.linalg.lstsq(
         design * weights[:, None], profile * weights, rcond=None
@@ -142,7 +164,7 @@ def _fit_square_wave_profile_at_cycles(
     residuals = profile - fitted_profile
 
     return SquareWaveFit(
-        terms=SQUARE_WAVE_TERMS,
+        terms=len(harmonics),
         cycles=cycles,
         harmonics=harmonics,
         offset=float(coefficients[0]),
@@ -171,8 +193,10 @@ def _square_wave_design_matrix(
     sample_count: int,
     *,
     cycles: float,
+    harmonics: np.ndarray | None = None,
 ) -> np.ndarray:
-    harmonics = _odd_harmonics()
+    if harmonics is None:
+        harmonics = _odd_harmonics()
     _validate_sample_count(sample_count, parameter_count=2 + 2 * len(harmonics))
 
     x = (np.arange(sample_count, dtype=np.float64) + 0.5) / sample_count
@@ -195,7 +219,6 @@ def _as_1d_finite_profile(profile: np.ndarray) -> np.ndarray:
         raise ValueError(f"profile is {profile.ndim}D; expected a 1D array")
     if not np.all(np.isfinite(profile)):
         raise ValueError("profile must contain only finite values")
-    _validate_sample_count(len(profile), parameter_count=2 + 2 * SQUARE_WAVE_TERMS)
     return profile
 
 

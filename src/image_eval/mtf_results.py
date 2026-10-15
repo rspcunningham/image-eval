@@ -114,6 +114,7 @@ def flat_region_mtf_points(
             fit = fit_square_wave_profile_at_cycles(
                 profile,
                 cycles=roi.frequency_lp_per_mm * len(profile) / pixels_per_mm,
+                harmonics=fitted_profile.fit.harmonics,
             )
         except ValueError:  # flat region too short along the profile axis
             continue
