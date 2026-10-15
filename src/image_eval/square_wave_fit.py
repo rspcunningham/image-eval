@@ -12,6 +12,12 @@ SQUARE_WAVE_TERMS = 3
 CYCLE_SEARCH_MIN = 2.0
 CYCLE_SEARCH_MAX = 4.0
 CYCLE_SEARCH_STEPS = 401
+# Fraction of each profile (split across both ends) down-weighted by a Tukey taper, so
+# ROI margins and edge halos beyond the bars carry little weight in the fit.
+TAPER_FRACTION = 0.5
+# Free-period fits used to calibrate pixels per millimetre must at least reach this
+# fundamental MTF; poorly resolved elements would otherwise fit noise at any period.
+CALIBRATION_MIN_MTF = 0.3
 
 
 @dataclass(frozen=True)
@@ -39,13 +45,51 @@ class FittedBarROIProfile:
 
 
 def fit_bar_roi_profiles(roi_profiles: Sequence[BarROIProfile]) -> list[FittedBarROIProfile]:
-    return [fit_bar_roi_profile(roi_profile) for roi_profile in roi_profiles]
+    """Fit every ROI at the period implied by its known frequency.
+
+    Pixels per millimetre are calibrated once from free-period fits of well-resolved
+    elements, then each ROI is refit with its cycle count fixed, so poorly resolved
+    elements cannot pick whichever period best matches their noise.
+    """
+    free_fits = [fit_square_wave_profile(roi_profile.profile) for roi_profile in roi_profiles]
+    pixels_per_mm = calibrate_pixels_per_mm(roi_profiles, free_fits)
+    return [
+        FittedBarROIProfile(
+            roi_profile=roi_profile,
+            fit=fit_square_wave_profile_at_cycles(
+                roi_profile.profile,
+                cycles=roi_profile.frequency_lp_per_mm * len(roi_profile.profile) / pixels_per_mm,
+            ),
+        )
+        for roi_profile in roi_profiles
+    ]
 
 
-def fit_bar_roi_profile(roi_profile: BarROIProfile) -> FittedBarROIProfile:
-    return FittedBarROIProfile(
-        roi_profile=roi_profile,
-        fit=fit_square_wave_profile(roi_profile.profile),
+def calibrate_pixels_per_mm(
+    roi_profiles: Sequence[BarROIProfile],
+    free_fits: Sequence[SquareWaveFit],
+) -> float:
+    if not roi_profiles:
+        raise ValueError("cannot calibrate pixels per millimetre without ROI profiles")
+    candidates = [
+        roi_profile.frequency_lp_per_mm * len(roi_profile.profile) / fit.cycles
+        for roi_profile, fit in zip(roi_profiles, free_fits, strict=True)
+        if CYCLE_SEARCH_MIN < fit.cycles < CYCLE_SEARCH_MAX
+        and fit.fundamental_amplitude * np.pi / 2.0 >= CALIBRATION_MIN_MTF
+    ]
+    if not candidates:
+        candidates = [
+            roi_profile.frequency_lp_per_mm * len(roi_profile.profile) / fit.cycles
+            for roi_profile, fit in zip(roi_profiles, free_fits, strict=True)
+        ]
+    return float(np.median(candidates))
+
+
+def fit_square_wave_profile_at_cycles(profile: np.ndarray, *, cycles: float) -> SquareWaveFit:
+    return _fit_square_wave_profile_at_cycles(
+        _as_1d_finite_profile(profile),
+        harmonics=_odd_harmonics(),
+        cycles=cycles,
     )
 
 
@@ -90,7 +134,10 @@ def _fit_square_wave_profile_at_cycles(
     cycles: float,
 ) -> SquareWaveFit:
     design = _square_wave_design_matrix(len(profile), cycles=cycles)
-    coefficients, _, _, _ = np.linalg.lstsq(design, profile, rcond=None)
+    weights = np.sqrt(_taper_weights(len(profile)))
+    coefficients, _, _, _ = np.linalg.lstsq(
+        design * weights[:, None], profile * weights, rcond=None
+    )
     fitted_profile = design @ coefficients
     residuals = profile - fitted_profile
 
@@ -104,8 +151,20 @@ def _fit_square_wave_profile_at_cycles(
         cosine_coefficients=np.asarray(coefficients[3::2], dtype=np.float64),
         fitted_profile=fitted_profile,
         residuals=residuals,
-        residual_rms=float(np.sqrt(np.mean(residuals * residuals))),
+        residual_rms=float(np.sqrt(np.sum(weights**2 * residuals**2) / np.sum(weights**2))),
     )
+
+
+def _taper_weights(sample_count: int) -> np.ndarray:
+    """Tukey window: flat in the middle, cosine roll-off over TAPER_FRACTION of the samples."""
+    x = (np.arange(sample_count, dtype=np.float64) + 0.5) / sample_count
+    edge = TAPER_FRACTION / 2.0
+    weights = np.ones(sample_count)
+    if edge > 0:
+        rising, falling = x < edge, x > 1.0 - edge
+        weights[rising] = 0.5 * (1.0 - np.cos(np.pi * x[rising] / edge))
+        weights[falling] = 0.5 * (1.0 - np.cos(np.pi * (1.0 - x[falling]) / edge))
+    return weights
 
 
 def _square_wave_design_matrix(

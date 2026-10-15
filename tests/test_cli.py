@@ -45,7 +45,7 @@ class ImageEvalCLITests(unittest.TestCase):
             self.assertGreaterEqual(len(report["nps"]["rows"]), 1)
             self.assertEqual(
                 set(report["mtf"]["rows"][0]),
-                {"cycles_per_mm", "orientation", "mtf"},
+                {"cycles_per_mm", "orientation", "mtf", "noise_mtf", "resolved"},
             )
 
     def test_detail_fits_adds_plot_ready_square_wave_fit_data(self) -> None:

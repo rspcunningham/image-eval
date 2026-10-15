@@ -7,7 +7,9 @@ import numpy as np
 
 from image_eval.mtf_profiles import BarROIProfile
 from image_eval.mtf_results import (
+    NOISE_FLOOR_FACTOR,
     average_pixels_per_mm_from_fits,
+    calculate_mtf_report,
     calculate_mtf_results,
     line_profile_mtf_points,
     mtf_results_from_fits,
@@ -97,6 +99,43 @@ class MTFResultsTests(unittest.TestCase):
         self.assertEqual(len(results), 3)
         self.assertEqual([result.cycles_per_mm for result in results], [1, 3, 5])
         self.assertEqual([result.orientation for result in results], ["X", "X", "X"])
+
+    def test_flags_elements_below_the_flat_region_noise_floor(self) -> None:
+        rng = np.random.default_rng(1)
+        image = 0.5 + 0.02 * rng.standard_normal((40, 200))
+        image[:, 0:20] = 0.0  # black reference
+        image[:, 20:40] = 1.0 + 0.02 * rng.standard_normal((40, 20))  # white reference
+        x = np.arange(64)
+        image[:, 60:124] = 0.5 + 0.4 * np.sign(np.sin(2 * np.pi * 3 * (x + 0.5) / 64))  # resolved
+        image[:, 130:194] = 0.5 + 0.02 * rng.standard_normal((40, 64))  # unresolved
+        template = {
+            "normalization_rois": {
+                "black": {"x0": 0, "y0": 0, "x1": 20, "y1": 40},
+                "white": {"x0": 20, "y0": 0, "x1": 40, "y1": 40},
+            },
+            "bar_rois": [
+                {
+                    "group": 0,
+                    "element": 1,
+                    "orientation": "X",
+                    "rect": {"x0": 60, "y0": 0, "x1": 124, "y1": 40},
+                },
+                {
+                    "group": 0,
+                    "element": 2,
+                    "orientation": "X",
+                    "rect": {"x0": 130, "y0": 0, "x1": 194, "y1": 40},
+                },
+            ],
+        }
+
+        report = calculate_mtf_report(image, template)
+
+        fundamentals = report.results[0::3]
+        self.assertTrue(fundamentals[0].resolved)
+        self.assertFalse(fundamentals[1].resolved)
+        self.assertIsNotNone(fundamentals[1].noise_mtf)
+        self.assertLess(fundamentals[1].mtf, NOISE_FLOOR_FACTOR * fundamentals[1].noise_mtf)
 
 
 def _fits(

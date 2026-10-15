@@ -9,7 +9,6 @@ import numpy as np
 
 from image_eval.mtf_results import (
     MTFReport,
-    average_pixels_per_mm_from_fits,
     calculate_mtf_report,
     fitted_square_wave_mtf_points,
     roi_pixels_per_mm,
@@ -61,7 +60,7 @@ def evaluate_image(
     _validate_registered_normalization_rois(registered_template)
 
     mtf_report = calculate_mtf_report(subject_image, registered_template, norm=norm)
-    pixels_per_mm = average_pixels_per_mm_from_fits(mtf_report.fitted_profiles)
+    pixels_per_mm = mtf_report.pixels_per_mm
     nps_report = calculate_nps_report(
         subject_image,
         registered_template,
@@ -99,11 +98,14 @@ def evaluation_result_to_dict(
         "registered_template": result.registered_template,
         "mtf": {
             "frequency_unit": "cycles/mm",
+            "pixels_per_mm": result.mtf_report.pixels_per_mm,
             "rows": [
                 {
                     "cycles_per_mm": row.cycles_per_mm,
                     "orientation": row.orientation,
                     "mtf": row.mtf,
+                    "noise_mtf": row.noise_mtf,
+                    "resolved": row.resolved,
                 }
                 for row in result.mtf_report.results
             ],

@@ -11,8 +11,10 @@ from image_eval.square_wave_fit import (
     CYCLE_SEARCH_STEPS,
     SQUARE_WAVE_TERMS,
     _square_wave_design_matrix,
+    calibrate_pixels_per_mm,
     fit_bar_roi_profiles,
     fit_square_wave_profile,
+    fit_square_wave_profile_at_cycles,
 )
 
 
@@ -86,3 +88,62 @@ class SquareWaveFitTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FixedPeriodFitTests(unittest.TestCase):
+    def test_refits_every_roi_at_the_calibrated_period(self) -> None:
+        # Two clean elements calibrate 64 px / (16 lp/mm * 3 cycles) ... then a noisy third
+        # element must be fit at its geometric period, not at whatever matches the noise.
+        clean = _square_wave_design_matrix(64, cycles=3.0) @ np.array([0.5, 0, 0.3, 0, 0, 0, 0, 0])
+        rng = np.random.default_rng(0)
+        noisy = 0.5 + 0.05 * rng.standard_normal(64)
+        profiles = [
+            _roi(clean, frequency=16.0),
+            _roi(clean, frequency=16.0),
+            _roi(noisy, frequency=20.0),
+        ]
+
+        fits = fit_bar_roi_profiles(profiles)
+
+        pixels_per_mm = 16.0 * 64 / 3.0
+        self.assertAlmostEqual(fits[0].fit.cycles, 3.0, places=6)
+        self.assertAlmostEqual(fits[2].fit.cycles, 20.0 * 64 / pixels_per_mm, places=6)
+
+    def test_calibration_ignores_poorly_resolved_and_boundary_fits(self) -> None:
+        clean = _square_wave_design_matrix(64, cycles=3.0) @ np.array([0.5, 0, 0.3, 0, 0, 0, 0, 0])
+        weak = _square_wave_design_matrix(64, cycles=3.6) @ np.array([0.5, 0, 0.02, 0, 0, 0, 0, 0])
+        profiles = [_roi(clean, frequency=16.0), _roi(weak, frequency=16.0)]
+        free = [fit_square_wave_profile(p.profile) for p in profiles]
+
+        self.assertAlmostEqual(calibrate_pixels_per_mm(profiles, free), 16.0 * 64 / 3.0, places=4)
+
+    def test_taper_keeps_exact_fits_exact(self) -> None:
+        coefficients = np.array([0.4, 0.1, 0.6, 0.05, 0.1, 0.0, 0.02, 0.0])
+        profile = _square_wave_design_matrix(48, cycles=2.7) @ coefficients
+
+        fit = fit_square_wave_profile_at_cycles(profile, cycles=2.7)
+
+        np.testing.assert_allclose(fit.fitted_profile, profile, atol=1e-10)
+
+    def test_taper_down_weights_profile_ends(self) -> None:
+        coefficients = np.array([0.5, 0, 0.3, 0, 0, 0, 0, 0])
+        profile = _square_wave_design_matrix(64, cycles=3.0) @ coefficients
+        corrupted = profile.copy()
+        corrupted[:3] += 1.0  # bright halo past the first bar
+        corrupted[-3:] += 1.0
+
+        fit = fit_square_wave_profile_at_cycles(corrupted, cycles=3.0)
+
+        self.assertAlmostEqual(fit.fundamental_amplitude, 0.3, delta=0.01)
+
+
+def _roi(profile: np.ndarray, *, frequency: float) -> BarROIProfile:
+    return BarROIProfile(
+        group=0,
+        element=1,
+        orientation="X",
+        frequency_lp_per_mm=frequency,
+        rect={"x0": 0, "y0": 0, "x1": len(profile), "y1": 8},
+        profile_axis="x",
+        profile=profile,
+    )

@@ -33,7 +33,7 @@ class EvaluationTests(unittest.TestCase):
             self.assertGreaterEqual(len(report["nps"]["rows"]), 1)
             self.assertEqual(
                 set(report["mtf"]["rows"][0]),
-                {"cycles_per_mm", "orientation", "mtf"},
+                {"cycles_per_mm", "orientation", "mtf", "noise_mtf", "resolved"},
             )
 
     def test_evaluation_dict_includes_fit_details_when_requested(self) -> None:
