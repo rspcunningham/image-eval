@@ -42,6 +42,24 @@ class MTFProfileTests(unittest.TestCase):
             ),
         )
 
+    def test_normalizes_image_using_quantile_cutoffs(self) -> None:
+        image = np.array([[10, 40, 60, 90]], dtype=np.float32)
+        normalization_rois = {
+            "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 1},
+            "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 1},
+        }
+
+        normalized = normalize_image_intensity(image, normalization_rois, norm=0.0)
+
+        self.assertEqual(normalized.normalization.method, "quantile")
+        self.assertEqual(normalized.normalization.cutoff, 0.0)
+        self.assertEqual(normalized.normalization.black_level, 10)
+        self.assertEqual(normalized.normalization.white_level, 90)
+        np.testing.assert_allclose(
+            normalized.image,
+            np.array([[0, 0.375, 0.625, 1]], dtype=np.float64),
+        )
+
     def test_accepts_inverted_normalization_scale(self) -> None:
         image = np.array([[30, 10]], dtype=np.float32)
         normalization_rois = {
@@ -64,6 +82,22 @@ class MTFProfileTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             normalize_image_intensity(image, normalization_rois)
+
+    def test_rejects_non_object_normalization_rois(self) -> None:
+        image = np.ones((3, 3), dtype=np.float32)
+
+        with self.assertRaisesRegex(ValueError, "normalization_rois must be a JSON object"):
+            normalize_image_intensity(image, None)
+
+    def test_rejects_invalid_numeric_normalization_cutoff(self) -> None:
+        image = np.ones((3, 3), dtype=np.float32)
+        normalization_rois = {
+            "black": {"x0": 0, "y0": 0, "x1": 1, "y1": 1},
+            "white": {"x0": 1, "y0": 0, "x1": 2, "y1": 1},
+        }
+
+        with self.assertRaisesRegex(ValueError, "numeric normalization cutoff"):
+            normalize_image_intensity(image, normalization_rois, norm=0.5)
 
     def test_collapses_x_oriented_roi_over_y_axis(self) -> None:
         image = np.arange(20, dtype=np.float64).reshape(4, 5)

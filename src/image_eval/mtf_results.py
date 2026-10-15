@@ -6,7 +6,7 @@ from typing import Any, NamedTuple, Sequence
 
 import numpy as np
 
-from image_eval.mtf_profiles import prepare_mtf_profiles
+from image_eval.mtf_profiles import NormalizationSpec, prepare_mtf_profiles
 from image_eval.square_wave_fit import (
     FittedBarROIProfile,
     SquareWaveFit,
@@ -27,12 +27,22 @@ class MTFReport(NamedTuple):
     fitted_profiles: list[FittedBarROIProfile]
 
 
-def calculate_mtf_results(image: np.ndarray, template: dict[str, Any]) -> list[MTFResult]:
-    return calculate_mtf_report(image, template).results
+def calculate_mtf_results(
+    image: np.ndarray,
+    template: dict[str, Any],
+    *,
+    norm: NormalizationSpec = "mean",
+) -> list[MTFResult]:
+    return calculate_mtf_report(image, template, norm=norm).results
 
 
-def calculate_mtf_report(image: np.ndarray, template: dict[str, Any]) -> MTFReport:
-    prepared = prepare_mtf_profiles(image, template)
+def calculate_mtf_report(
+    image: np.ndarray,
+    template: dict[str, Any],
+    *,
+    norm: NormalizationSpec = "mean",
+) -> MTFReport:
+    prepared = prepare_mtf_profiles(image, template, norm=norm)
     fitted_profiles = fit_bar_roi_profiles(prepared.bar_profiles)
     return MTFReport(
         results=mtf_results_from_fits(fitted_profiles),

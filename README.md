@@ -24,5 +24,17 @@ image-eval init base_image.npy template.json --groups 4-7 --elements 1-6
 Evaluate an image against a base image and template:
 
 ```bash
-image-eval eval --base-url base_image.npy --template template.json --subject-url subject_image.npy --json
+image-eval eval --base-url base_image.npy --template template.json --subject-url subject_image.npy > report.json
+```
+
+Use percentile endpoint normalization instead of mean patch levels:
+
+```bash
+image-eval eval --base-url base_image.npy --template template.json --subject-url subject_image.npy --norm 0.05 > report.json
+```
+
+Include square-wave fit profiles for plotting MTF fit diagnostics:
+
+```bash
+image-eval eval --base-url base_image.npy --template template.json --subject-url subject_image.npy --detail fits > report-with-fits.json
 ```

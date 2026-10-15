@@ -31,7 +31,7 @@ import NPYCore
         sourceImage: SourceImage(width: 20, height: 10),
         normalizationROIs: NormalizationROIs(
             black: PixelRect(x0: 0, y0: 0, x1: 2, y1: 2),
-            white: nil
+            white: PixelRect(x0: 2, y0: 0, x1: 4, y1: 2)
         ),
         barROIs: [
             BarROI(
@@ -73,8 +73,8 @@ import NPYCore
         "y1": 4
       },
       "normalization_rois": {
-        "black": null,
-        "white": null
+        "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 2},
+        "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 2}
       },
       "bar_rois": []
     }
@@ -93,8 +93,8 @@ import NPYCore
         "height": 10
       },
       "normalization_rois": {
-        "black": null,
-        "white": null
+        "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 2},
+        "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 2}
       },
       "bar_rois": [
         {
@@ -111,6 +111,26 @@ import NPYCore
     }
 }
 
+@Test func rejectsNullNormalizationROIs() {
+    let data = Data("""
+    {
+      "source_image": {
+        "width": 20,
+        "height": 10
+      },
+      "normalization_rois": {
+        "black": null,
+        "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 2}
+      },
+      "bar_rois": []
+    }
+    """.utf8)
+
+    expectDecodingError("null normalization ROI") {
+        _ = try JSONDecoder().decode(Template.self, from: data)
+    }
+}
+
 @Test func rejectsUnknownSchemaVersionKey() {
     let data = Data("""
     {
@@ -120,8 +140,8 @@ import NPYCore
         "height": 10
       },
       "normalization_rois": {
-        "black": null,
-        "white": null
+        "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 2},
+        "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 2}
       },
       "bar_rois": []
     }
@@ -149,12 +169,20 @@ import NPYCore
     #expect(document.template.barROIs.count == 8)
     #expect(document.template.barROIs.map(\.orientation) == ["X", "Y", "X", "Y", "X", "Y", "X", "Y"])
     #expect(document.entries().map(\.label).prefix(2) == ["Black normalization", "White normalization"])
+    #expect(document.template.normalizationROIs.black == nil)
+    #expect(document.template.normalizationROIs.white == nil)
+    #expect(!FileManager.default.fileExists(atPath: templateURL.path))
+
+    try document.setRect(PixelRect(x0: 0, y0: 0, x1: 2, y1: 2), for: .normalization(.black))
+    #expect(!FileManager.default.fileExists(atPath: templateURL.path))
+
+    try document.setRect(PixelRect(x0: 2, y0: 0, x1: 4, y1: 2), for: .normalization(.white))
     let text = try String(contentsOf: templateURL, encoding: .utf8)
     #expect(!text.contains("base_image_path"))
     #expect(!text.contains("\"path\""))
     #expect(!text.contains("schema_version"))
-    #expect(text.contains("\"black\" : null"))
-    #expect(text.contains("\"white\" : null"))
+    #expect(!text.contains("\"black\" : null"))
+    #expect(!text.contains("\"white\" : null"))
     #expect(text.contains("\"rect\" : null"))
     #expect(FileManager.default.fileExists(atPath: templateURL.path))
 }
@@ -168,8 +196,8 @@ import NPYCore
         "height": 10
       },
       "normalization_rois": {
-        "black": null,
-        "white": null
+        "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 2},
+        "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 2}
       },
       "bar_rois": []
     }
@@ -192,8 +220,8 @@ import NPYCore
         "height": 10
       },
       "normalization_rois": {
-        "black": null,
-        "white": null
+        "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 2},
+        "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 2}
       },
       "bar_rois": []
     }
@@ -246,6 +274,10 @@ import NPYCore
 
     let original = Template(
         sourceImage: SourceImage(width: 20, height: 10),
+        normalizationROIs: NormalizationROIs(
+            black: PixelRect(x0: 0, y0: 0, x1: 2, y1: 2),
+            white: PixelRect(x0: 2, y0: 0, x1: 4, y1: 2)
+        ),
         barROIs: [
             BarROI(group: 9, element: 2, orientation: "Y", rect: PixelRect(x0: 1, y0: 1, x1: 3, y1: 4))
         ]
@@ -277,8 +309,8 @@ import NPYCore
         "height": 10
       },
       "normalization_rois": {
-        "black": null,
-        "white": null
+        "black": {"x0": 0, "y0": 0, "x1": 2, "y1": 2},
+        "white": {"x0": 2, "y0": 0, "x1": 4, "y1": 2}
       },
       "bar_rois": [
         {

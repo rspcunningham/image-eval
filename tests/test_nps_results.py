@@ -40,6 +40,15 @@ class NPSResultsTests(unittest.TestCase):
         self.assertTrue(any((result.white_nps or 0.0) > 0.0 for result in results))
         self.assertTrue(any((result.average_nps or 0.0) > 0.0 for result in results))
 
+    def test_percentile_norm_controls_normalized_roi_crops(self) -> None:
+        image = np.array([[10.0, 40.0, 60.0, 90.0], [10.0, 40.0, 60.0, 90.0]])
+        template = _template(width=4, height=2, split=2)
+
+        report = calculate_nps_report(image, template, norm=0.0)
+
+        self.assertEqual(report.spectra[0].crop_mean, 0.1875)
+        self.assertEqual(report.spectra[1].crop_mean, 0.8125)
+
     def test_frequency_calibration_controls_reported_axis(self) -> None:
         image = np.zeros((4, 8), dtype=np.float64)
         image[:, 4:8] = 1.0

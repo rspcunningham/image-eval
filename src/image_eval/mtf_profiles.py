@@ -17,12 +17,23 @@ from image_eval.usaf_1951 import line_pairs_per_mm
 
 
 ProfileAxis = Literal["x", "y"]
+NormalizationSpec = Literal["mean"] | float
 
 
 @dataclass(frozen=True)
 class IntensityNormalization:
-    black_mean: float
-    white_mean: float
+    black_level: float
+    white_level: float
+    method: str
+    cutoff: float | None = None
+
+    @property
+    def black_mean(self) -> float:
+        return self.black_level
+
+    @property
+    def white_mean(self) -> float:
+        return self.white_level
 
 
 @dataclass(frozen=True)
@@ -56,8 +67,13 @@ class PreparedMTFProfiles:
     bar_profiles: list[BarROIProfile]
 
 
-def prepare_mtf_profiles(image: np.ndarray, template: dict[str, Any]) -> PreparedMTFProfiles:
-    normalized = normalize_image_intensity(image, template["normalization_rois"])
+def prepare_mtf_profiles(
+    image: np.ndarray,
+    template: dict[str, Any],
+    *,
+    norm: NormalizationSpec = "mean",
+) -> PreparedMTFProfiles:
+    normalized = normalize_image_intensity(image, template["normalization_rois"], norm=norm)
     return PreparedMTFProfiles(
         normalized_image=normalized.image,
         normalization=normalized.normalization,
@@ -65,27 +81,69 @@ def prepare_mtf_profiles(image: np.ndarray, template: dict[str, Any]) -> Prepare
     )
 
 
-def normalize_image_intensity(image: np.ndarray, normalization_rois: Any) -> NormalizedImage:
+def normalize_image_intensity(
+    image: np.ndarray,
+    normalization_rois: Any,
+    *,
+    norm: NormalizationSpec = "mean",
+) -> NormalizedImage:
     image = as_2d_float_image(image)
     rois = normalization_roi_rects(normalization_rois)
 
-    black_mean = normalization_roi_mean(image, rois.black, "black")
-    white_mean = normalization_roi_mean(image, rois.white, "white")
-    scale = white_mean - black_mean
+    black_level, white_level, normalization = normalization_levels(image, rois, norm=norm)
+    scale = white_level - black_level
     if not np.isfinite(scale) or scale == 0:
-        raise ValueError("white normalization ROI mean must differ from black ROI mean")
+        raise ValueError("white normalization level must differ from black normalization level")
 
     return NormalizedImage(
-        image=(image - black_mean) / scale,
-        normalization=IntensityNormalization(
-            black_mean=black_mean,
-            white_mean=white_mean,
-        ),
+        image=(image - black_level) / scale,
+        normalization=normalization,
         normalization_rois=rois,
     )
 
 
+def normalization_levels(
+    image: np.ndarray,
+    rois: NormalizationROIs,
+    *,
+    norm: NormalizationSpec = "mean",
+) -> tuple[float, float, IntensityNormalization]:
+    black_pixels = finite_roi_pixels(image, rois.black, "normalization_rois.black")
+    white_pixels = finite_roi_pixels(image, rois.white, "normalization_rois.white")
+
+    if norm == "mean":
+        black_level = float(np.mean(black_pixels))
+        white_level = float(np.mean(white_pixels))
+        return black_level, white_level, IntensityNormalization(
+            black_level=black_level,
+            white_level=white_level,
+            method="mean",
+        )
+
+    cutoff = normalization_cutoff(norm)
+    black_level = float(np.quantile(black_pixels, cutoff))
+    white_level = float(np.quantile(white_pixels, 1.0 - cutoff))
+    return black_level, white_level, IntensityNormalization(
+        black_level=black_level,
+        white_level=white_level,
+        method="quantile",
+        cutoff=cutoff,
+    )
+
+
+def normalization_cutoff(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("normalization must be 'mean' or a numeric cutoff")
+
+    cutoff = float(value)
+    if not np.isfinite(cutoff) or cutoff < 0 or cutoff >= 0.5:
+        raise ValueError("numeric normalization cutoff must be >= 0 and < 0.5")
+    return cutoff
+
+
 def normalization_roi_rects(normalization_rois: Any) -> NormalizationROIs:
+    if not isinstance(normalization_rois, dict):
+        raise ValueError("normalization_rois must be a JSON object")
     normalization_rois = cast(dict[str, Any], normalization_rois)
     return NormalizationROIs(
         black=as_rect(normalization_rois["black"], "normalization_rois.black"),

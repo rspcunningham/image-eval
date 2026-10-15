@@ -81,6 +81,10 @@ public struct NormalizationROIs: Codable, Equatable, Sendable {
         self.white = white
     }
 
+    public var isComplete: Bool {
+        black != nil && white != nil
+    }
+
     enum CodingKeys: String, CodingKey, CaseIterable {
         case black
         case white
@@ -91,11 +95,29 @@ public struct NormalizationROIs: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try requireKey(.black, in: container)
         try requireKey(.white, in: container)
-        self.black = try container.decodeIfPresent(PixelRect.self, forKey: .black)
-        self.white = try container.decodeIfPresent(PixelRect.self, forKey: .white)
+        self.black = try container.decode(PixelRect.self, forKey: .black)
+        self.white = try container.decode(PixelRect.self, forKey: .white)
     }
 
     public func encode(to encoder: Encoder) throws {
+        guard let black else {
+            throw EncodingError.invalidValue(
+                Optional<PixelRect>.none as Any,
+                EncodingError.Context(
+                    codingPath: encoder.codingPath + [CodingKeys.black],
+                    debugDescription: "Normalization ROI 'black' is required."
+                )
+            )
+        }
+        guard let white else {
+            throw EncodingError.invalidValue(
+                Optional<PixelRect>.none as Any,
+                EncodingError.Context(
+                    codingPath: encoder.codingPath + [CodingKeys.white],
+                    debugDescription: "Normalization ROI 'white' is required."
+                )
+            )
+        }
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(black, forKey: .black)
         try container.encode(white, forKey: .white)

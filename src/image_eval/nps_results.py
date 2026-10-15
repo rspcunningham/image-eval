@@ -5,7 +5,7 @@ from typing import Any, NamedTuple, Sequence
 
 import numpy as np
 
-from image_eval.mtf_profiles import NormalizedImage, normalize_image_intensity
+from image_eval.mtf_profiles import NormalizationSpec, NormalizedImage, normalize_image_intensity
 from image_eval.roi import Rect, finite_crop_image
 
 
@@ -64,11 +64,13 @@ def calculate_nps_results(
     template: dict[str, Any],
     *,
     frequency_calibration: SpatialFrequencyCalibration = CYCLES_PER_PIXEL_FREQUENCY,
+    norm: NormalizationSpec = "mean",
 ) -> list[NPSResult]:
     return calculate_nps_report(
         image,
         template,
         frequency_calibration=frequency_calibration,
+        norm=norm,
     ).results
 
 
@@ -77,8 +79,9 @@ def calculate_nps_report(
     template: dict[str, Any],
     *,
     frequency_calibration: SpatialFrequencyCalibration = CYCLES_PER_PIXEL_FREQUENCY,
+    norm: NormalizationSpec = "mean",
 ) -> NPSReport:
-    normalized = normalize_image_intensity(image, template["normalization_rois"])
+    normalized = normalize_image_intensity(image, template["normalization_rois"], norm=norm)
     roi_crops = _normalization_roi_crops(normalized)
     radial_edges = _radial_bin_edges_cycles_per_pixel([crop for _, _, crop in roi_crops])
 

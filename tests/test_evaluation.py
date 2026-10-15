@@ -29,11 +29,62 @@ class EvaluationTests(unittest.TestCase):
             self.assertNotIn("base_image_path", report["registered_template"])
             self.assertNotIn("path", report["registered_template"]["source_image"])
             self.assertGreaterEqual(len(report["mtf"]["rows"]), 1)
+            self.assertNotIn("fit_profiles", report["mtf"])
             self.assertGreaterEqual(len(report["nps"]["rows"]), 1)
             self.assertEqual(
                 set(report["mtf"]["rows"][0]),
                 {"cycles_per_mm", "orientation", "mtf"},
             )
+
+    def test_evaluation_dict_includes_fit_details_when_requested(self) -> None:
+        image = np.tile(np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float64), (16, 4))
+
+        result = evaluate_image(
+            base_image=image,
+            template=_template(width=16, height=16),
+            subject_image=image.copy(),
+        )
+
+        report = evaluation_result_to_dict(result, details=["fits"])
+        fit_profiles = report["mtf"]["fit_profiles"]
+        self.assertEqual(len(fit_profiles), 1)
+
+        fit_profile = fit_profiles[0]
+        self.assertEqual(
+            {
+                "group",
+                "element",
+                "orientation",
+                "rect",
+                "profile_axis",
+                "frequency_lp_per_mm",
+                "pixels_per_mm",
+                "fit",
+                "series",
+                "mtf_points",
+            },
+            set(fit_profile),
+        )
+        self.assertEqual(fit_profile["fit"]["harmonics"], [1, 3, 5])
+        self.assertEqual(fit_profile["series"]["sample_index"], list(range(16)))
+        self.assertEqual(len(fit_profile["series"]["normalized_position"]), 16)
+        self.assertEqual(len(fit_profile["series"]["observed_profile"]), 16)
+        self.assertEqual(len(fit_profile["series"]["fitted_profile"]), 16)
+        self.assertEqual(len(fit_profile["series"]["residuals"]), 16)
+        self.assertEqual([point["harmonic"] for point in fit_profile["mtf_points"]], [1, 3, 5])
+
+    def test_evaluation_dict_expands_all_details_to_fit_details(self) -> None:
+        image = np.tile(np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float64), (16, 4))
+
+        result = evaluate_image(
+            base_image=image,
+            template=_template(width=16, height=16),
+            subject_image=image.copy(),
+        )
+
+        report = evaluation_result_to_dict(result, details=["all"])
+
+        self.assertIn("fit_profiles", report["mtf"])
 
     def test_rejects_template_shape_that_does_not_match_base_image(self) -> None:
         image = np.zeros((4, 8), dtype=np.float64)
@@ -42,6 +93,18 @@ class EvaluationTests(unittest.TestCase):
             evaluate_image(
                 base_image=image,
                 template=_template(width=7, height=4),
+                subject_image=image,
+            )
+
+    def test_rejects_normalization_roi_outside_registered_subject_image(self) -> None:
+        image = np.tile(np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float64), (16, 4))
+        template = _template(width=16, height=16)
+        template["normalization_rois"]["black"] = {"x0": 15, "y0": 0, "x1": 17, "y1": 16}
+
+        with self.assertRaisesRegex(ValueError, "normalization ROI must be fully visible"):
+            evaluate_image(
+                base_image=image,
+                template=template,
                 subject_image=image,
             )
 

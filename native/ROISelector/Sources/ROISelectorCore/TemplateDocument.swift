@@ -81,9 +81,7 @@ public final class TemplateDocument {
             sourceImage: SourceImage(width: imageWidth, height: imageHeight),
             barROIs: makeBarROIs(groups: groups, elements: elements)
         )
-        let document = TemplateDocument(url: templateURL, template: template)
-        try document.save()
-        return document
+        return TemplateDocument(url: templateURL, template: template)
     }
 
     public func save() throws {
@@ -149,6 +147,9 @@ public final class TemplateDocument {
                 return
             }
             template.barROIs[index].rect = clamped
+        }
+        guard template.normalizationROIs.isComplete else {
+            return
         }
         try save()
     }

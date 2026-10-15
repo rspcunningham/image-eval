@@ -1,15 +1,24 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
 import cv2
 import numpy as np
 
-from image_eval.mtf_results import MTFReport, average_pixels_per_mm_from_fits, calculate_mtf_report
+from image_eval.mtf_results import (
+    MTFReport,
+    average_pixels_per_mm_from_fits,
+    calculate_mtf_report,
+    fitted_square_wave_mtf_points,
+    roi_pixels_per_mm,
+)
+from image_eval.mtf_profiles import NormalizationSpec
 from image_eval.nps_results import NPSReport, SpatialFrequencyCalibration, calculate_nps_report
 from image_eval.registered_template import project_template_rois
 from image_eval.registration import register_subject_in_base
+from image_eval.square_wave_fit import FittedBarROIProfile
 
 
 @dataclass(frozen=True)
@@ -27,6 +36,7 @@ def evaluate_image(
     base_image: np.ndarray,
     template: dict[str, Any],
     subject_image: np.ndarray,
+    norm: NormalizationSpec = "mean",
 ) -> EvaluationResult:
     _validate_template_source_image(template, base_image.shape)
 
@@ -48,8 +58,9 @@ def evaluate_image(
         registration["transform_subject_to_base"],
         subject_image.shape,
     )
+    _validate_registered_normalization_rois(registered_template)
 
-    mtf_report = calculate_mtf_report(subject_image, registered_template)
+    mtf_report = calculate_mtf_report(subject_image, registered_template, norm=norm)
     pixels_per_mm = average_pixels_per_mm_from_fits(mtf_report.fitted_profiles)
     nps_report = calculate_nps_report(
         subject_image,
@@ -58,6 +69,7 @@ def evaluate_image(
             unit="cycles/mm",
             cycles_per_pixel_multiplier=pixels_per_mm,
         ),
+        norm=norm,
     )
 
     return EvaluationResult(
@@ -70,10 +82,15 @@ def evaluate_image(
     )
 
 
-def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, Any]:
+def evaluation_result_to_dict(
+    result: EvaluationResult,
+    *,
+    details: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    detail_set = _normalized_details(details)
     base_height, base_width = result.base_image.shape
     subject_height, subject_width = result.subject_image.shape
-    return _json_clean({
+    report = {
         "image_shapes": {
             "base": {"height": base_height, "width": base_width},
             "subject": {"height": subject_height, "width": subject_width},
@@ -103,7 +120,89 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, Any]:
                 for row in result.nps_report.results
             ],
         },
-    })
+    }
+
+    if "fits" in detail_set:
+        report["mtf"]["fit_profiles"] = [
+            _fitted_bar_roi_profile_to_dict(fitted_profile)
+            for fitted_profile in result.mtf_report.fitted_profiles
+        ]
+
+    return _json_clean(report)
+
+
+def _normalized_details(details: Iterable[str] | None) -> set[str]:
+    if details is None:
+        return set()
+
+    values = set(details)
+    unknown = values - {"fits", "all"}
+    if unknown:
+        detail_names = ", ".join(sorted(unknown))
+        raise ValueError(f"unknown evaluation detail: {detail_names}")
+
+    if "all" in values:
+        values.add("fits")
+    values.discard("all")
+    return values
+
+
+def _fitted_bar_roi_profile_to_dict(fitted_profile: FittedBarROIProfile) -> dict[str, Any]:
+    roi = fitted_profile.roi_profile
+    fit = fitted_profile.fit
+    return {
+        "group": roi.group,
+        "element": roi.element,
+        "orientation": roi.orientation,
+        "rect": roi.rect,
+        "profile_axis": roi.profile_axis,
+        "frequency_lp_per_mm": roi.frequency_lp_per_mm,
+        "pixels_per_mm": roi_pixels_per_mm(fitted_profile),
+        "fit": {
+            "terms": fit.terms,
+            "cycles": fit.cycles,
+            "harmonics": fit.harmonics,
+            "offset": fit.offset,
+            "baseline_slope": fit.baseline_slope,
+            "sine_coefficients": fit.sine_coefficients,
+            "cosine_coefficients": fit.cosine_coefficients,
+            "fundamental_amplitude": fit.fundamental_amplitude,
+            "residual_rms": fit.residual_rms,
+        },
+        "series": _fitted_bar_roi_series_to_dict(fitted_profile),
+        "mtf_points": _fitted_bar_roi_mtf_points_to_dict(fitted_profile),
+    }
+
+
+def _fitted_bar_roi_series_to_dict(fitted_profile: FittedBarROIProfile) -> dict[str, Any]:
+    roi = fitted_profile.roi_profile
+    fit = fitted_profile.fit
+    sample_index = np.arange(len(roi.profile), dtype=np.int64)
+    normalized_position = (sample_index.astype(np.float64) + 0.5) / len(roi.profile)
+    return {
+        "sample_index": sample_index,
+        "normalized_position": normalized_position,
+        "observed_profile": roi.profile,
+        "fitted_profile": fit.fitted_profile,
+        "residuals": fit.residuals,
+    }
+
+
+def _fitted_bar_roi_mtf_points_to_dict(
+    fitted_profile: FittedBarROIProfile,
+) -> list[dict[str, Any]]:
+    roi = fitted_profile.roi_profile
+    fit = fitted_profile.fit
+    mtf_by_frequency = fitted_square_wave_mtf_points(fit, roi.frequency_lp_per_mm)
+    return [
+        {
+            "harmonic": harmonic,
+            "cycles_per_mm": cycles_per_mm,
+            "mtf": mtf_by_frequency[cycles_per_mm],
+        }
+        for harmonic in fit.harmonics
+        for cycles_per_mm in [float(roi.frequency_lp_per_mm * harmonic)]
+    ]
 
 
 def _validate_template_source_image(template: dict[str, Any], base_shape: tuple[int, int]) -> None:
@@ -121,6 +220,24 @@ def _validate_template_source_image(template: dict[str, Any], base_shape: tuple[
         raise ValueError(
             "template source_image dimensions "
             f"{width}x{height} do not match base image {base_width}x{base_height}"
+        )
+
+
+def _validate_registered_normalization_rois(template: dict[str, Any]) -> None:
+    normalization_rois = template.get("normalization_rois")
+    if not isinstance(normalization_rois, dict):
+        raise ValueError("registered template must contain normalization_rois")
+
+    missing = [
+        name
+        for name in ("black", "white")
+        if normalization_rois.get(name) is None
+    ]
+    if missing:
+        names = ", ".join(missing)
+        raise ValueError(
+            "normalization ROI must be fully visible in registered subject image: "
+            f"{names}"
         )
 
 
