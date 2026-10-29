@@ -15,19 +15,39 @@ NPS_MAX_RADIAL_BINS = 128
 
 @dataclass(frozen=True)
 class SpatialFrequencyCalibration:
+    """Pixel-to-physical conversion for NPS frequencies and densities.
+
+    cycles_per_pixel_multiplier is pixels per length_unit, so one pixel covers
+    1 / multiplier^2 square length units. The NPS is a density over frequency, reported
+    in intensity^2 * length_unit^2, which keeps it comparable across pixel sizes and
+    integrates over frequency to the region's variance.
+    """
+
     unit: str
     cycles_per_pixel_multiplier: float
+    length_unit: str
 
     def convert(self, frequency_cycles_per_pixel: np.ndarray) -> np.ndarray:
+        return frequency_cycles_per_pixel * self._scale()
+
+    def pixel_area(self) -> float:
+        return 1.0 / self._scale() ** 2
+
+    @property
+    def nps_unit(self) -> str:
+        return f"normalized intensity^2 {self.length_unit}^2"
+
+    def _scale(self) -> float:
         scale = self.cycles_per_pixel_multiplier
         if not np.isfinite(scale) or scale <= 0:
             raise ValueError("cycles_per_pixel_multiplier must be positive and finite")
-        return frequency_cycles_per_pixel * scale
+        return scale
 
 
 CYCLES_PER_PIXEL_FREQUENCY = SpatialFrequencyCalibration(
     unit="cycles per pixel",
     cycles_per_pixel_multiplier=1.0,
+    length_unit="pixel",
 )
 
 
@@ -115,7 +135,11 @@ def calculate_nps_spectrum(
 
     crop_mean = float(np.mean(crop))
     noise = crop - crop_mean
-    power_spectrum = np.fft.fftshift(np.abs(np.fft.fft2(noise)) ** 2 / noise.size)
+    # NPS(f) = pixel area / N * |DFT|^2: a density whose integral over frequency is the
+    # variance, independent of the pixel size.
+    power_spectrum = np.fft.fftshift(
+        np.abs(np.fft.fft2(noise)) ** 2 / noise.size * frequency_calibration.pixel_area()
+    )
 
     frequency_x_cycles_per_pixel = np.fft.fftshift(np.fft.fftfreq(width))
     frequency_y_cycles_per_pixel = np.fft.fftshift(np.fft.fftfreq(height))

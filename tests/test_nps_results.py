@@ -55,6 +55,7 @@ class NPSResultsTests(unittest.TestCase):
         calibration = SpatialFrequencyCalibration(
             unit="cycles/mm",
             cycles_per_pixel_multiplier=2.0,
+            length_unit="mm",
         )
 
         default_report = calculate_nps_report(image, _template())
@@ -67,6 +68,31 @@ class NPSResultsTests(unittest.TestCase):
         self.assertAlmostEqual(
             calibrated_report.results[0].frequency,
             default_report.results[0].frequency * 2.0,
+        )
+
+    def test_calibrated_nps_is_a_density_scaled_by_pixel_area(self) -> None:
+        rng = np.random.default_rng(3)
+        image = np.zeros((32, 64), dtype=np.float64)
+        image[:, 32:64] = 1.0
+        image += 0.05 * rng.standard_normal(image.shape)
+        template = _template(width=64, height=32, split=32)
+        calibration = SpatialFrequencyCalibration(
+            unit="cycles/mm", cycles_per_pixel_multiplier=4.0, length_unit="mm"
+        )
+
+        per_pixel = calculate_nps_report(image, template)
+        calibrated = calculate_nps_report(image, template, frequency_calibration=calibration)
+
+        # 4 pixels per mm: each pixel is 1/16 mm^2.
+        for default_row, calibrated_row in zip(per_pixel.results, calibrated.results, strict=True):
+            self.assertAlmostEqual(calibrated_row.black_nps, default_row.black_nps / 16.0)
+        # The density integrates to the variance: mean over the DFT grid times its area.
+        spectrum = calibrated.spectra[0]
+        frequency_area = (spectrum.frequency_x[1] - spectrum.frequency_x[0]) * (
+            spectrum.frequency_y[1] - spectrum.frequency_y[0]
+        )
+        self.assertAlmostEqual(
+            float(np.sum(spectrum.power_spectrum) * frequency_area), spectrum.crop_variance
         )
 
     def test_rejects_non_finite_nps_roi_pixels(self) -> None:

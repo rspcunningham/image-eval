@@ -67,6 +67,7 @@ def evaluate_image(
         frequency_calibration=SpatialFrequencyCalibration(
             unit="cycles/mm",
             cycles_per_pixel_multiplier=pixels_per_mm,
+            length_unit="mm",
         ),
         norm=norm,
     )
@@ -112,6 +113,7 @@ def evaluation_result_to_dict(
         },
         "nps": {
             "frequency_unit": result.nps_report.frequency_calibration.unit,
+            "nps_unit": result.nps_report.frequency_calibration.nps_unit,
             "rows": [
                 {
                     "frequency": row.frequency,
