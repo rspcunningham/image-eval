@@ -18,10 +18,6 @@ TAPER_FRACTION = 0.5
 # Free-period fits used to calibrate pixels per millimetre must at least reach this
 # fundamental MTF; poorly resolved elements would otherwise fit noise at any period.
 CALIBRATION_MIN_MTF = 0.3
-# Odd harmonics are fit only below this frequency (cycles/mm); the fundamental is always
-# fit. Above it, harmonics of the bar pattern fall past the optics' passband and the
-# sampling limit, so their coefficients would only fit noise.
-MAX_HARMONIC_CYCLES_PER_MM = 350.0
 
 
 @dataclass(frozen=True)
@@ -52,13 +48,17 @@ def fit_bar_roi_profiles(roi_profiles: Sequence[BarROIProfile]) -> list[FittedBa
     """Fit every ROI at the period implied by its known frequency.
 
     Pixels per millimetre are calibrated once from free-period fits of well-resolved
-    elements, then each ROI is refit with its cycle count fixed, so poorly resolved
-    elements cannot pick whichever period best matches their noise.
+    elements, then each ROI is refit with its cycle count fixed, so poorly
+    resolved elements cannot pick whichever period best matches their noise. The fixed
+    fits include every odd harmonic the sampling can carry; which of those are resolved
+    is decided against the flat-region noise floor in mtf_results.
     """
-    harmonics = [harmonics_for_frequency(roi.frequency_lp_per_mm) for roi in roi_profiles]
     free_fits = [
-        fit_square_wave_profile(roi.profile, harmonics=roi_harmonics)
-        for roi, roi_harmonics in zip(roi_profiles, harmonics, strict=True)
+        fit_square_wave_profile(
+            roi.profile,
+            harmonics=harmonics_below_nyquist(CYCLE_SEARCH_MAX, len(roi.profile)),
+        )
+        for roi in roi_profiles
     ]
     pixels_per_mm = calibrate_pixels_per_mm(roi_profiles, free_fits)
     return [
@@ -66,18 +66,23 @@ def fit_bar_roi_profiles(roi_profiles: Sequence[BarROIProfile]) -> list[FittedBa
             roi_profile=roi,
             fit=fit_square_wave_profile_at_cycles(
                 roi.profile,
-                cycles=roi.frequency_lp_per_mm * len(roi.profile) / pixels_per_mm,
-                harmonics=roi_harmonics,
+                cycles=cycles,
+                harmonics=harmonics_below_nyquist(cycles, len(roi.profile)),
             ),
         )
-        for roi, roi_harmonics in zip(roi_profiles, harmonics, strict=True)
+        for roi in roi_profiles
+        for cycles in [roi.frequency_lp_per_mm * len(roi.profile) / pixels_per_mm]
     ]
 
 
-def harmonics_for_frequency(fundamental_cycles_per_mm: float) -> np.ndarray:
-    """Odd harmonics to fit: the fundamental, plus each harmonic below the frequency cap."""
+def harmonics_below_nyquist(cycles: float, sample_count: int) -> np.ndarray:
+    """Odd harmonics to try: the fundamental, plus each harmonic below the sampling Nyquist.
+
+    A profile of sample_count samples spanning cycles periods carries harmonic h only if
+    h * cycles < sample_count / 2; higher harmonics alias and would only fit noise.
+    """
     harmonics = _odd_harmonics()
-    keep = (harmonics == 1) | (harmonics * fundamental_cycles_per_mm < MAX_HARMONIC_CYCLES_PER_MM)
+    keep = (harmonics == 1) | (harmonics * cycles < sample_count / 2.0)
     return harmonics[keep]
 
 

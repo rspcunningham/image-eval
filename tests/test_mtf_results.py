@@ -53,16 +53,18 @@ class MTFResultsTests(unittest.TestCase):
         self.assertAlmostEqual(pixels_per_mm, 16 * 64 / fitted_profile.fit.cycles)
 
     def test_averages_pixels_per_millimetre_across_fitted_rois(self) -> None:
-        fitted_profiles = fit_bar_roi_profiles([
-            _roi_profile("X", fundamental_amplitude=0.2),
-            _roi_profile("Y", fundamental_amplitude=0.4),
-        ])
+        fitted_profiles = fit_bar_roi_profiles(
+            [
+                _roi_profile("X", fundamental_amplitude=0.2),
+                _roi_profile("Y", fundamental_amplitude=0.4),
+            ]
+        )
 
         pixels_per_mm = average_pixels_per_mm_from_fits(fitted_profiles)
 
-        expected = np.mean([
-            roi_pixels_per_mm(fitted_profile) for fitted_profile in fitted_profiles
-        ])
+        expected = np.mean(
+            [roi_pixels_per_mm(fitted_profile) for fitted_profile in fitted_profiles]
+        )
         self.assertAlmostEqual(pixels_per_mm, expected)
 
     def test_rejects_average_pixels_per_millimetre_without_fits(self) -> None:
@@ -96,9 +98,10 @@ class MTFResultsTests(unittest.TestCase):
 
         results = calculate_mtf_results(image, template)
 
-        self.assertEqual(len(results), 3)
-        self.assertEqual([result.cycles_per_mm for result in results], [1, 3, 5])
-        self.assertEqual([result.orientation for result in results], ["X", "X", "X"])
+        # 2-sample period sits at Nyquist: only the fundamental can be fit.
+        self.assertEqual(len(results), 1)
+        self.assertEqual([result.cycles_per_mm for result in results], [1])
+        self.assertEqual([result.orientation for result in results], ["X"])
 
     def test_flags_elements_below_the_flat_region_noise_floor(self) -> None:
         rng = np.random.default_rng(1)
@@ -131,11 +134,56 @@ class MTFResultsTests(unittest.TestCase):
 
         report = calculate_mtf_report(image, template)
 
-        fundamentals = report.results[0::3]
+        # Each ROI reports its fundamental first, then any harmonics that were resolved.
+        fundamentals = [
+            next(r for r in report.results if r.cycles_per_mm == frequency)
+            for frequency in (1.0, 2 ** (1 / 6))
+        ]
         self.assertTrue(fundamentals[0].resolved)
         self.assertFalse(fundamentals[1].resolved)
         self.assertIsNotNone(fundamentals[1].noise_mtf)
         self.assertLess(fundamentals[1].mtf, NOISE_FLOOR_FACTOR * fundamentals[1].noise_mtf)
+
+    def test_keeps_resolved_harmonics_and_drops_noise_only_ones(self) -> None:
+        rng = np.random.default_rng(2)
+        image = 0.5 + 0.02 * rng.standard_normal((40, 200))
+        image[:, 0:20] = 0.0
+        image[:, 20:40] = 1.0 + 0.02 * rng.standard_normal((40, 20))
+        x = np.arange(64)
+        # A clean square wave: its 3rd and 5th harmonics are real and well above noise.
+        image[:, 60:124] = 0.5 + 0.4 * np.sign(np.sin(2 * np.pi * 3 * (x + 0.5) / 64))
+        # A pure sinusoid in noise: harmonics there would only fit the noise.
+        image[:, 130:194] = (
+            0.5
+            + 0.2 * np.sin(2 * np.pi * 3 * (x + 0.5) / 64)
+            + 0.02 * rng.standard_normal((40, 64))
+        )
+        template = {
+            "normalization_rois": {
+                "black": {"x0": 0, "y0": 0, "x1": 20, "y1": 40},
+                "white": {"x0": 20, "y0": 0, "x1": 40, "y1": 40},
+            },
+            "bar_rois": [
+                {
+                    "group": 0,
+                    "element": 1,
+                    "orientation": "X",
+                    "rect": {"x0": 60, "y0": 0, "x1": 124, "y1": 40},
+                },
+                {
+                    "group": 0,
+                    "element": 1,
+                    "orientation": "X",
+                    "rect": {"x0": 130, "y0": 0, "x1": 194, "y1": 40},
+                },
+            ],
+        }
+
+        report = calculate_mtf_report(image, template)
+
+        np.testing.assert_array_equal(report.fitted_profiles[0].fit.harmonics, [1, 3, 5])
+        np.testing.assert_array_equal(report.fitted_profiles[1].fit.harmonics, [1])
+        self.assertEqual(len(report.results), 4)
 
 
 def _fits(
@@ -145,14 +193,16 @@ def _fits(
     third_amplitude: float = 0.0,
     fifth_amplitude: float = 0.0,
 ):
-    return fit_bar_roi_profiles([
-        _roi_profile(
-            orientation,
-            fundamental_amplitude=fundamental_amplitude,
-            third_amplitude=third_amplitude,
-            fifth_amplitude=fifth_amplitude,
-        )
-    ])
+    return fit_bar_roi_profiles(
+        [
+            _roi_profile(
+                orientation,
+                fundamental_amplitude=fundamental_amplitude,
+                third_amplitude=third_amplitude,
+                fifth_amplitude=fifth_amplitude,
+            )
+        ]
+    )
 
 
 def _roi_profile(

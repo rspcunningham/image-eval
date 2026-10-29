@@ -62,15 +62,27 @@ def calculate_mtf_report(
     fitted_profiles = fit_bar_roi_profiles(prepared.bar_profiles)
     pixels_per_mm = average_pixels_per_mm_from_fits(fitted_profiles)
     flat_rects = normalization_roi_rects(template["normalization_rois"])
-    noise_points = [
-        flat_region_mtf_points(
-            prepared.normalized_image,
-            [flat_rects.black, flat_rects.white],
-            fitted_profile,
-            pixels_per_mm,
+
+    def noise_floors(profiles: Sequence[FittedBarROIProfile]) -> list[dict[float, float] | None]:
+        return [
+            flat_region_mtf_points(
+                prepared.normalized_image,
+                [flat_rects.black, flat_rects.white],
+                fitted_profile,
+                pixels_per_mm,
+            )
+            for fitted_profile in profiles
+        ]
+
+    # Square waves are built from the odd harmonics that are actually resolved: fit every
+    # harmonic below Nyquist, then refit without the 3rd and 5th wherever they are not.
+    fitted_profiles = [
+        drop_unresolved_harmonics(fitted_profile, noise)
+        for fitted_profile, noise in zip(
+            fitted_profiles, noise_floors(fitted_profiles), strict=True
         )
-        for fitted_profile in fitted_profiles
     ]
+    noise_points = noise_floors(fitted_profiles)
     return MTFReport(
         results=mtf_results_from_fits(fitted_profiles, noise_points),
         fitted_profiles=fitted_profiles,
@@ -133,6 +145,41 @@ def line_profile_mtf_points(
     )
 
 
+def is_resolved(mtf: float, noise_mtf: float) -> bool:
+    return bool(mtf > max(NOISE_FLOOR_FACTOR * noise_mtf, MIN_RESOLVED_MTF))
+
+
+def drop_unresolved_harmonics(
+    fitted_profile: FittedBarROIProfile,
+    noise_points: dict[float, float] | None,
+) -> FittedBarROIProfile:
+    """Refit without the 3rd and 5th harmonics that do not clear the noise floor.
+
+    The fundamental is always kept. Without a measurable noise floor no harmonic is
+    trusted, so only the fundamental remains.
+    """
+    roi = fitted_profile.roi_profile
+    fit = fitted_profile.fit
+    mtf_points = fitted_square_wave_mtf_points(fit, roi.frequency_lp_per_mm)
+    kept = np.array(
+        [
+            harmonic
+            for harmonic, (cycles_per_mm, mtf) in zip(
+                fit.harmonics, mtf_points.items(), strict=True
+            )
+            if harmonic == 1
+            or (noise_points is not None and is_resolved(mtf, noise_points[cycles_per_mm]))
+        ],
+        dtype=np.int64,
+    )
+    if len(kept) == len(fit.harmonics):
+        return fitted_profile
+    return FittedBarROIProfile(
+        roi_profile=roi,
+        fit=fit_square_wave_profile_at_cycles(roi.profile, cycles=fit.cycles, harmonics=kept),
+    )
+
+
 def fitted_profile_mtf_results(
     fitted_profile: FittedBarROIProfile,
     noise_points: dict[float, float] | None = None,
@@ -146,9 +193,7 @@ def fitted_profile_mtf_results(
             noise_mtf=None if noise_points is None else noise_points[cycles_per_mm],
             resolved=None
             if noise_points is None
-            else bool(
-                mtf > max(NOISE_FLOOR_FACTOR * noise_points[cycles_per_mm], MIN_RESOLVED_MTF)
-            ),
+            else is_resolved(mtf, noise_points[cycles_per_mm]),
         )
         for cycles_per_mm, mtf in fitted_square_wave_mtf_points(
             fitted_profile.fit,

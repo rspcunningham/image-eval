@@ -84,8 +84,9 @@ class ImageEvalCLITests(unittest.TestCase):
             self.assertGreater(fit_profile["pixels_per_mm"], 0)
 
             fit = fit_profile["fit"]
-            self.assertEqual(fit["terms"], 3)
-            self.assertEqual(fit["harmonics"], [1, 3, 5])
+            # 4 cycles over 16 samples: the 3rd and 5th harmonics alias, so only the fundamental is fit.
+            self.assertEqual(fit["terms"], 1)
+            self.assertEqual(fit["harmonics"], [1])
             self.assertIn("cycles", fit)
             self.assertIn("offset", fit)
             self.assertIn("baseline_slope", fit)
@@ -103,11 +104,11 @@ class ImageEvalCLITests(unittest.TestCase):
 
             self.assertEqual(
                 [point["harmonic"] for point in fit_profile["mtf_points"]],
-                [1, 3, 5],
+                [1],
             )
             self.assertEqual(
                 [point["cycles_per_mm"] for point in fit_profile["mtf_points"]],
-                [1.0, 3.0, 5.0],
+                [1.0],
             )
 
     def test_eval_accepts_percentile_norm_cutoff(self) -> None:

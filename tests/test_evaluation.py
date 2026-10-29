@@ -65,13 +65,14 @@ class EvaluationTests(unittest.TestCase):
             },
             set(fit_profile),
         )
-        self.assertEqual(fit_profile["fit"]["harmonics"], [1, 3, 5])
+        # 4 cycles over 16 samples: the 3rd and 5th harmonics alias, so only the fundamental is fit.
+        self.assertEqual(fit_profile["fit"]["harmonics"], [1])
         self.assertEqual(fit_profile["series"]["sample_index"], list(range(16)))
         self.assertEqual(len(fit_profile["series"]["normalized_position"]), 16)
         self.assertEqual(len(fit_profile["series"]["observed_profile"]), 16)
         self.assertEqual(len(fit_profile["series"]["fitted_profile"]), 16)
         self.assertEqual(len(fit_profile["series"]["residuals"]), 16)
-        self.assertEqual([point["harmonic"] for point in fit_profile["mtf_points"]], [1, 3, 5])
+        self.assertEqual([point["harmonic"] for point in fit_profile["mtf_points"]], [1])
 
     def test_evaluation_dict_expands_all_details_to_fit_details(self) -> None:
         image = np.tile(np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float64), (16, 4))
