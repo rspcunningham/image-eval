@@ -5,15 +5,17 @@ from typing import Sequence
 
 import numpy as np
 
-from image_eval.mtf_profiles import BarROIProfile
+from image_eval.mtf_profiles import BarROIProfile, OrientedSamples
 
 
 SQUARE_WAVE_TERMS = 3
 CYCLE_SEARCH_MIN = 2.0
 CYCLE_SEARCH_MAX = 4.0
-CYCLE_SEARCH_STEPS = 401
-# Fraction of each profile (split across both ends) down-weighted by a Tukey taper, so
-# ROI margins and edge halos beyond the bars carry little weight in the fit.
+# Coarse grid over the search range, then a fine grid one coarse step either side of the best.
+CYCLE_COARSE_STEP = 0.05
+CYCLE_FINE_STEP = 0.005
+# Fraction of each element's width (split across both ends) down-weighted by a Tukey
+# taper, so edge halos beyond the outer bars carry little weight in the fit.
 TAPER_FRACTION = 0.5
 # Free-period fits used to calibrate pixels per millimetre must at least reach this
 # fundamental MTF; poorly resolved elements would otherwise fit noise at any period.
@@ -29,7 +31,7 @@ class SquareWaveFit:
     baseline_slope: float
     sine_coefficients: np.ndarray
     cosine_coefficients: np.ndarray
-    fitted_profile: np.ndarray
+    fitted_values: np.ndarray
     residuals: np.ndarray
     residual_rms: float
 
@@ -54,35 +56,41 @@ def fit_bar_roi_profiles(roi_profiles: Sequence[BarROIProfile]) -> list[FittedBa
     is decided against the flat-region noise floor in mtf_results.
     """
     free_fits = [
-        fit_square_wave_profile(
-            roi.profile,
-            harmonics=harmonics_below_nyquist(CYCLE_SEARCH_MAX, len(roi.profile)),
+        fit_square_wave(
+            roi.samples,
+            harmonics=harmonics_below_nyquist(CYCLE_SEARCH_MAX, roi.samples.width_px),
         )
         for roi in roi_profiles
     ]
     pixels_per_mm = calibrate_pixels_per_mm(roi_profiles, free_fits)
+    return fit_bar_roi_profiles_at_scale(roi_profiles, pixels_per_mm)
+
+
+def fit_bar_roi_profiles_at_scale(
+    roi_profiles: Sequence[BarROIProfile], pixels_per_mm: float
+) -> list[FittedBarROIProfile]:
     return [
         FittedBarROIProfile(
             roi_profile=roi,
-            fit=fit_square_wave_profile_at_cycles(
-                roi.profile,
+            fit=fit_square_wave_at_cycles(
+                roi.samples,
                 cycles=cycles,
-                harmonics=harmonics_below_nyquist(cycles, len(roi.profile)),
+                harmonics=harmonics_below_nyquist(cycles, roi.samples.width_px),
             ),
         )
         for roi in roi_profiles
-        for cycles in [roi.frequency_lp_per_mm * len(roi.profile) / pixels_per_mm]
+        for cycles in [roi.frequency_lp_per_mm * roi.samples.width_px / pixels_per_mm]
     ]
 
 
-def harmonics_below_nyquist(cycles: float, sample_count: int) -> np.ndarray:
+def harmonics_below_nyquist(cycles: float, width_px: float) -> np.ndarray:
     """Odd harmonics to try: the fundamental, plus each harmonic below the sampling Nyquist.
 
-    A profile of sample_count samples spanning cycles periods carries harmonic h only if
-    h * cycles < sample_count / 2; higher harmonics alias and would only fit noise.
+    An element width_px pixels wide spanning cycles periods carries harmonic h only if
+    h * cycles < width_px / 2; higher harmonics alias and would only fit noise.
     """
     harmonics = _odd_harmonics()
-    keep = (harmonics == 1) | (harmonics * cycles < sample_count / 2.0)
+    keep = (harmonics == 1) | (harmonics * cycles < width_px / 2.0)
     return harmonics[keep]
 
 
@@ -93,80 +101,67 @@ def calibrate_pixels_per_mm(
     if not roi_profiles:
         raise ValueError("cannot calibrate pixels per millimetre without ROI profiles")
     candidates = [
-        roi_profile.frequency_lp_per_mm * len(roi_profile.profile) / fit.cycles
+        roi_profile.frequency_lp_per_mm * roi_profile.samples.width_px / fit.cycles
         for roi_profile, fit in zip(roi_profiles, free_fits, strict=True)
         if CYCLE_SEARCH_MIN < fit.cycles < CYCLE_SEARCH_MAX
         and fit.fundamental_amplitude * np.pi / 2.0 >= CALIBRATION_MIN_MTF
     ]
     if not candidates:
         candidates = [
-            roi_profile.frequency_lp_per_mm * len(roi_profile.profile) / fit.cycles
+            roi_profile.frequency_lp_per_mm * roi_profile.samples.width_px / fit.cycles
             for roi_profile, fit in zip(roi_profiles, free_fits, strict=True)
         ]
     return float(np.median(candidates))
 
 
-def fit_square_wave_profile_at_cycles(
-    profile: np.ndarray,
-    *,
-    cycles: float,
-    harmonics: np.ndarray | None = None,
+def fit_square_wave(
+    samples: OrientedSamples, *, harmonics: np.ndarray | None = None
 ) -> SquareWaveFit:
-    return _fit_square_wave_profile_at_cycles(
-        _as_1d_finite_profile(profile),
-        harmonics=_odd_harmonics() if harmonics is None else harmonics,
-        cycles=cycles,
-    )
+    """Best fit over a coarse-then-fine grid of cycle counts."""
+    harmonics = _odd_harmonics() if harmonics is None else harmonics
 
-
-def fit_square_wave_profile(
-    profile: np.ndarray,
-    *,
-    harmonics: np.ndarray | None = None,
-) -> SquareWaveFit:
-    profile = _as_1d_finite_profile(profile)
-    return _best_cycle_fit(
-        profile,
-        harmonics=_odd_harmonics() if harmonics is None else harmonics,
-    )
-
-
-def _best_cycle_fit(
-    profile: np.ndarray,
-    *,
-    harmonics: np.ndarray,
-) -> SquareWaveFit:
-    candidate_cycles = np.linspace(CYCLE_SEARCH_MIN, CYCLE_SEARCH_MAX, CYCLE_SEARCH_STEPS)
-    best_fit = _fit_square_wave_profile_at_cycles(
-        profile,
-        harmonics=harmonics,
-        cycles=float(candidate_cycles[0]),
-    )
-    for cycles in candidate_cycles[1:]:
-        fit = _fit_square_wave_profile_at_cycles(
-            profile,
-            harmonics=harmonics,
-            cycles=float(cycles),
+    def best(grid: np.ndarray) -> SquareWaveFit:
+        fits = (
+            fit_square_wave_at_cycles(samples, cycles=float(cycles), harmonics=harmonics)
+            for cycles in grid
         )
-        if fit.residual_rms < best_fit.residual_rms:
-            best_fit = fit
+        return min(fits, key=lambda fit: fit.residual_rms)
 
-    return best_fit
-
-
-def _fit_square_wave_profile_at_cycles(
-    profile: np.ndarray,
-    *,
-    harmonics: np.ndarray,
-    cycles: float,
-) -> SquareWaveFit:
-    design = _square_wave_design_matrix(len(profile), cycles=cycles, harmonics=harmonics)
-    weights = np.sqrt(_taper_weights(len(profile)))
-    coefficients, _, _, _ = np.linalg.lstsq(
-        design * weights[:, None], profile * weights, rcond=None
+    coarse = best(np.arange(CYCLE_SEARCH_MIN, CYCLE_SEARCH_MAX + 1e-9, CYCLE_COARSE_STEP))
+    return best(
+        np.clip(
+            coarse.cycles
+            + np.arange(-CYCLE_COARSE_STEP, CYCLE_COARSE_STEP + 1e-9, CYCLE_FINE_STEP),
+            CYCLE_SEARCH_MIN,
+            CYCLE_SEARCH_MAX,
+        )
     )
-    fitted_profile = design @ coefficients
-    residuals = profile - fitted_profile
+
+
+def fit_square_wave_at_cycles(
+    samples: OrientedSamples, *, cycles: float, harmonics: np.ndarray | None = None
+) -> SquareWaveFit:
+    """Weighted least squares of offset, linear baseline and odd harmonics at known period.
+
+    positions are fractions of the element width, so a pixel anywhere along a rotated bar
+    is fit at its true distance across the bars.
+    """
+    harmonics = _odd_harmonics() if harmonics is None else harmonics
+    x, values = samples.positions, samples.values
+    if len(x) < 2 + 2 * len(harmonics):
+        raise ValueError(f"square-wave fit needs more samples than the {len(x)} given")
+    columns = [np.ones_like(x), x - 0.5]
+    for harmonic in harmonics:
+        radians = 2.0 * np.pi * cycles * float(harmonic) * x
+        columns += [np.sin(radians), np.cos(radians)]
+    design = np.column_stack(columns)
+    weights = _taper_weights(x)
+    root_weights = np.sqrt(weights)
+    coefficients, _, _, _ = np.linalg.lstsq(
+        design * root_weights[:, None], values * root_weights, rcond=None
+    )
+    fitted_values = design @ coefficients
+    residuals = values - fitted_values
 
     return SquareWaveFit(
         terms=len(harmonics),
@@ -176,60 +171,18 @@ def _fit_square_wave_profile_at_cycles(
         baseline_slope=float(coefficients[1]),
         sine_coefficients=np.asarray(coefficients[2::2], dtype=np.float64),
         cosine_coefficients=np.asarray(coefficients[3::2], dtype=np.float64),
-        fitted_profile=fitted_profile,
+        fitted_values=fitted_values,
         residuals=residuals,
-        residual_rms=float(np.sqrt(np.sum(weights**2 * residuals**2) / np.sum(weights**2))),
+        residual_rms=float(np.sqrt(np.sum(weights * residuals**2) / np.sum(weights))),
     )
 
 
-def _taper_weights(sample_count: int) -> np.ndarray:
-    """Tukey window: flat in the middle, cosine roll-off over TAPER_FRACTION of the samples."""
-    x = (np.arange(sample_count, dtype=np.float64) + 0.5) / sample_count
+def _taper_weights(x: np.ndarray) -> np.ndarray:
+    """Tukey window: flat in the middle, cosine roll-off over TAPER_FRACTION of the width."""
     edge = TAPER_FRACTION / 2.0
-    weights = np.ones(sample_count)
-    if edge > 0:
-        rising, falling = x < edge, x > 1.0 - edge
-        weights[rising] = 0.5 * (1.0 - np.cos(np.pi * x[rising] / edge))
-        weights[falling] = 0.5 * (1.0 - np.cos(np.pi * (1.0 - x[falling]) / edge))
-    return weights
-
-
-def _square_wave_design_matrix(
-    sample_count: int,
-    *,
-    cycles: float,
-    harmonics: np.ndarray | None = None,
-) -> np.ndarray:
-    if harmonics is None:
-        harmonics = _odd_harmonics()
-    _validate_sample_count(sample_count, parameter_count=2 + 2 * len(harmonics))
-
-    x = (np.arange(sample_count, dtype=np.float64) + 0.5) / sample_count
-    centered_x = x - 0.5
-    columns = [np.ones(sample_count, dtype=np.float64), centered_x]
-    for harmonic in harmonics:
-        radians = 2.0 * np.pi * cycles * float(harmonic) * x
-        columns.append(np.sin(radians))
-        columns.append(np.cos(radians))
-    return np.column_stack(columns)
+    distance = np.clip(np.minimum(x, 1.0 - x), 0.0, None)
+    return np.where(distance < edge, 0.5 * (1.0 - np.cos(np.pi * distance / edge)), 1.0)
 
 
 def _odd_harmonics() -> np.ndarray:
     return np.arange(1, 2 * SQUARE_WAVE_TERMS, 2, dtype=np.int64)
-
-
-def _as_1d_finite_profile(profile: np.ndarray) -> np.ndarray:
-    profile = np.asarray(profile, dtype=np.float64)
-    if profile.ndim != 1:
-        raise ValueError(f"profile is {profile.ndim}D; expected a 1D array")
-    if not np.all(np.isfinite(profile)):
-        raise ValueError("profile must contain only finite values")
-    return profile
-
-
-def _validate_sample_count(sample_count: int, *, parameter_count: int) -> None:
-    if sample_count < parameter_count:
-        raise ValueError(
-            f"profile needs at least {parameter_count} samples for this square-wave fit, "
-            f"got {sample_count}"
-        )

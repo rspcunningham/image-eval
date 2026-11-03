@@ -56,7 +56,7 @@ class EvaluationTests(unittest.TestCase):
                 "element",
                 "orientation",
                 "rect",
-                "profile_axis",
+                "width_px",
                 "frequency_lp_per_mm",
                 "pixels_per_mm",
                 "fit",
@@ -65,9 +65,8 @@ class EvaluationTests(unittest.TestCase):
             },
             set(fit_profile),
         )
-        # 4 cycles over 16 samples: the 3rd and 5th harmonics alias, so only the fundamental is fit.
+        # 4 cycles over 16 px: the 3rd and 5th harmonics alias, so only the fundamental is fit.
         self.assertEqual(fit_profile["fit"]["harmonics"], [1])
-        self.assertEqual(fit_profile["series"]["sample_index"], list(range(16)))
         self.assertEqual(len(fit_profile["series"]["normalized_position"]), 16)
         self.assertEqual(len(fit_profile["series"]["observed_profile"]), 16)
         self.assertEqual(len(fit_profile["series"]["fitted_profile"]), 16)

@@ -1,23 +1,27 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, NamedTuple, Sequence
 
 import numpy as np
 
+
 from image_eval.mtf_profiles import (
+    BarROIProfile,
     NormalizationSpec,
     normalization_roi_rects,
+    oriented_samples,
     prepare_mtf_profiles,
 )
-from image_eval.roi import Rect, crop_image
+from image_eval.roi import Rect
 from image_eval.square_wave_fit import (
+    CALIBRATION_MIN_MTF,
     FittedBarROIProfile,
     SquareWaveFit,
     fit_bar_roi_profiles,
-    fit_square_wave_profile,
-    fit_square_wave_profile_at_cycles,
+    fit_bar_roi_profiles_at_scale,
+    fit_square_wave_at_cycles,
 )
 
 # An element counts as resolved only if its MTF exceeds the MTF measured on flat
@@ -26,6 +30,12 @@ from image_eval.square_wave_fit import (
 # still carrying structured artifacts among the bars.
 NOISE_FLOOR_FACTOR = 3.0
 MIN_RESOLVED_MTF = 0.1
+# The whole target shares one rotation. It is found by maximising the fitted contrast of
+# well-resolved elements, since averaging along tilted bars always smears them: a coarse
+# search over +-ANGLE_SEARCH_DEGREES, then a fine one around the best coarse angle.
+ANGLE_SEARCH_DEGREES = 5.0
+ANGLE_COARSE_STEP = 0.1
+ANGLE_FINE_STEP = 0.01
 
 
 @dataclass(frozen=True)
@@ -41,6 +51,7 @@ class MTFReport(NamedTuple):
     results: list[MTFResult]
     fitted_profiles: list[FittedBarROIProfile]
     pixels_per_mm: float
+    rotation_degrees: float
 
 
 def calculate_mtf_results(
@@ -59,7 +70,14 @@ def calculate_mtf_report(
     norm: NormalizationSpec = "mean",
 ) -> MTFReport:
     prepared = prepare_mtf_profiles(image, template, norm=norm)
-    fitted_profiles = fit_bar_roi_profiles(prepared.bar_profiles)
+    rotation_degrees = estimate_rotation_degrees(
+        prepared.normalized_image, fit_bar_roi_profiles(prepared.bar_profiles)
+    )
+    bar_profiles = [
+        rotated_profile(prepared.normalized_image, roi, rotation_degrees)
+        for roi in prepared.bar_profiles
+    ]
+    fitted_profiles = fit_bar_roi_profiles(bar_profiles)
     pixels_per_mm = average_pixels_per_mm_from_fits(fitted_profiles)
     flat_rects = normalization_roi_rects(template["normalization_rois"])
 
@@ -70,6 +88,7 @@ def calculate_mtf_report(
                 [flat_rects.black, flat_rects.white],
                 fitted_profile,
                 pixels_per_mm,
+                rotation_degrees,
             )
             for fitted_profile in profiles
         ]
@@ -87,7 +106,42 @@ def calculate_mtf_report(
         results=mtf_results_from_fits(fitted_profiles, noise_points),
         fitted_profiles=fitted_profiles,
         pixels_per_mm=pixels_per_mm,
+        rotation_degrees=rotation_degrees,
     )
+
+
+def rotated_profile(
+    normalized_image: np.ndarray, roi: BarROIProfile, angle_degrees: float
+) -> BarROIProfile:
+    return replace(
+        roi, samples=oriented_samples(normalized_image, roi.rect, roi.orientation, angle_degrees)
+    )
+
+
+def estimate_rotation_degrees(
+    normalized_image: np.ndarray, unrotated_fits: Sequence[FittedBarROIProfile]
+) -> float:
+    """Rotation that maximises the summed harmonic power of well-resolved elements."""
+    pixels_per_mm = average_pixels_per_mm_from_fits(unrotated_fits)
+    reference = [
+        fitted.roi_profile
+        for fitted in unrotated_fits
+        if fitted.fit.fundamental_amplitude * math.pi / 2.0 >= CALIBRATION_MIN_MTF
+    ]
+
+    def power(angle: float) -> float:
+        rotated = [rotated_profile(normalized_image, roi, angle) for roi in reference]
+        return sum(
+            float(np.sum(fitted.fit.sine_coefficients**2 + fitted.fit.cosine_coefficients**2))
+            for fitted in fit_bar_roi_profiles_at_scale(rotated, pixels_per_mm)
+        )
+
+    def grid(center: float, half_width: float, step: float) -> list[float]:
+        steps = round(half_width / step)
+        return [center + step * k for k in range(-steps, steps + 1)]
+
+    best = max(grid(0.0, ANGLE_SEARCH_DEGREES, ANGLE_COARSE_STEP), key=power)
+    return max(grid(best, ANGLE_COARSE_STEP, ANGLE_FINE_STEP), key=power)
 
 
 def mtf_results_from_fits(
@@ -108,41 +162,36 @@ def flat_region_mtf_points(
     flat_rects: Sequence[Rect],
     fitted_profile: FittedBarROIProfile,
     pixels_per_mm: float,
+    rotation_degrees: float,
 ) -> dict[float, float] | None:
     """MTF that the same fixed-period fit reports on bar-free regions: the noise floor.
 
-    Each flat region is cropped to at most the bar ROI's size, collapsed along the same
-    axis, and fit at the bar ROI's period. The larger value across regions is kept.
+    Each flat region is cut to at most the bar ROI's size and sampled with the same
+    rotation, trim and period as the bar ROI. The larger value across regions is kept.
     """
     roi = fitted_profile.roi_profile
-    roi_height = roi.rect["y1"] - roi.rect["y0"]
     roi_width = roi.rect["x1"] - roi.rect["x0"]
+    roi_height = roi.rect["y1"] - roi.rect["y0"]
     floors: dict[float, float] | None = None
-    for rect in flat_rects:
-        crop = crop_image(normalized_image, rect, "normalization ROI")
-        crop = crop[: min(roi_height, crop.shape[0]), : min(roi_width, crop.shape[1])]
-        profile = np.mean(crop, axis=0 if roi.profile_axis == "x" else 1)
+    for flat in flat_rects:
+        rect = {
+            "x0": flat["x0"],
+            "y0": flat["y0"],
+            "x1": min(flat["x0"] + roi_width, flat["x1"]),
+            "y1": min(flat["y0"] + roi_height, flat["y1"]),
+        }
+        samples = oriented_samples(normalized_image, rect, roi.orientation, rotation_degrees)
         try:
-            fit = fit_square_wave_profile_at_cycles(
-                profile,
-                cycles=roi.frequency_lp_per_mm * len(profile) / pixels_per_mm,
+            fit = fit_square_wave_at_cycles(
+                samples,
+                cycles=roi.frequency_lp_per_mm * samples.width_px / pixels_per_mm,
                 harmonics=fitted_profile.fit.harmonics,
             )
-        except ValueError:  # flat region too short along the profile axis
+        except ValueError:  # flat region too small for the fit
             continue
         points = fitted_square_wave_mtf_points(fit, roi.frequency_lp_per_mm)
         floors = points if floors is None else {f: max(floors[f], v) for f, v in points.items()}
     return floors
-
-
-def line_profile_mtf_points(
-    profile: np.ndarray,
-    fundamental_cycles_per_mm: float,
-) -> dict[float, float]:
-    return fitted_square_wave_mtf_points(
-        fit_square_wave_profile(profile),
-        fundamental_cycles_per_mm,
-    )
 
 
 def is_resolved(mtf: float, noise_mtf: float) -> bool:
@@ -176,7 +225,7 @@ def drop_unresolved_harmonics(
         return fitted_profile
     return FittedBarROIProfile(
         roi_profile=roi,
-        fit=fit_square_wave_profile_at_cycles(roi.profile, cycles=fit.cycles, harmonics=kept),
+        fit=fit_square_wave_at_cycles(roi.samples, cycles=fit.cycles, harmonics=kept),
     )
 
 
@@ -221,7 +270,7 @@ def fitted_square_wave_mtf_points(
 
 def roi_pixels_per_mm(fitted_profile: FittedBarROIProfile) -> float:
     roi = fitted_profile.roi_profile
-    return float(roi.frequency_lp_per_mm * len(roi.profile) / fitted_profile.fit.cycles)
+    return float(roi.frequency_lp_per_mm * roi.samples.width_px / fitted_profile.fit.cycles)
 
 
 def average_pixels_per_mm_from_fits(fitted_profiles: Sequence[FittedBarROIProfile]) -> float:

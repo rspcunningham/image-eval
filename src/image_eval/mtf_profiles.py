@@ -16,8 +16,10 @@ from image_eval.roi import (
 from image_eval.usaf_1951 import line_pairs_per_mm
 
 
-ProfileAxis = Literal["x", "y"]
 NormalizationSpec = Literal["mean"] | float
+# Middle fraction of the bar length kept: averaging over the blurred bar ends would dilute
+# contrast equally at every harmonic, most in small elements.
+BAR_LENGTH_FRACTION = 0.6
 
 
 @dataclass(frozen=True)
@@ -50,14 +52,22 @@ class NormalizedImage:
 
 
 @dataclass(frozen=True)
+class OrientedSamples:
+    """Pixels of a rotated element, positioned across the bars as a fraction of its width."""
+
+    positions: np.ndarray
+    values: np.ndarray
+    width_px: float
+
+
+@dataclass(frozen=True)
 class BarROIProfile:
     group: int
     element: int
     orientation: str
     frequency_lp_per_mm: float
     rect: Rect
-    profile_axis: ProfileAxis
-    profile: np.ndarray
+    samples: OrientedSamples
 
 
 @dataclass(frozen=True)
@@ -72,12 +82,13 @@ def prepare_mtf_profiles(
     template: dict[str, Any],
     *,
     norm: NormalizationSpec = "mean",
+    angle_degrees: float = 0.0,
 ) -> PreparedMTFProfiles:
     normalized = normalize_image_intensity(image, template["normalization_rois"], norm=norm)
     return PreparedMTFProfiles(
         normalized_image=normalized.image,
         normalization=normalized.normalization,
-        bar_profiles=bar_roi_profiles(normalized.image, template["bar_rois"]),
+        bar_profiles=bar_roi_profiles(normalized.image, template["bar_rois"], angle_degrees),
     )
 
 
@@ -114,20 +125,28 @@ def normalization_levels(
     if norm == "mean":
         black_level = float(np.mean(black_pixels))
         white_level = float(np.mean(white_pixels))
-        return black_level, white_level, IntensityNormalization(
-            black_level=black_level,
-            white_level=white_level,
-            method="mean",
+        return (
+            black_level,
+            white_level,
+            IntensityNormalization(
+                black_level=black_level,
+                white_level=white_level,
+                method="mean",
+            ),
         )
 
     cutoff = normalization_cutoff(norm)
     black_level = float(np.quantile(black_pixels, cutoff))
     white_level = float(np.quantile(white_pixels, 1.0 - cutoff))
-    return black_level, white_level, IntensityNormalization(
-        black_level=black_level,
-        white_level=white_level,
-        method="quantile",
-        cutoff=cutoff,
+    return (
+        black_level,
+        white_level,
+        IntensityNormalization(
+            black_level=black_level,
+            white_level=white_level,
+            method="quantile",
+            cutoff=cutoff,
+        ),
     )
 
 
@@ -155,7 +174,9 @@ def normalization_roi_mean(image: np.ndarray, rect: Rect, name: str) -> float:
     return float(np.mean(finite_roi_pixels(image, rect, f"normalization_rois.{name}")))
 
 
-def bar_roi_profiles(normalized_image: np.ndarray, bar_rois: Any) -> list[BarROIProfile]:
+def bar_roi_profiles(
+    normalized_image: np.ndarray, bar_rois: Any, angle_degrees: float
+) -> list[BarROIProfile]:
     image = as_2d_float_image(normalized_image)
     profiles: list[BarROIProfile] = []
     for index, roi in enumerate(bar_rois):
@@ -163,13 +184,10 @@ def bar_roi_profiles(normalized_image: np.ndarray, bar_rois: Any) -> list[BarROI
         if rect_value is None:
             continue
 
-        group = as_int(roi["group"], f"bar_rois[{index}].group")
-        element = as_int(roi["element"], f"bar_rois[{index}].element")
         orientation = cast(str, roi["orientation"])
         rect = as_rect(rect_value, f"bar_rois[{index}].rect")
-        crop = crop_image(image, rect, f"bar_rois[{index}].rect")
-        profile_axis, collapse_axis = _profile_axes(orientation)
-
+        group = as_int(roi["group"], f"bar_rois[{index}].group")
+        element = as_int(roi["element"], f"bar_rois[{index}].element")
         profiles.append(
             BarROIProfile(
                 group=group,
@@ -177,17 +195,44 @@ def bar_roi_profiles(normalized_image: np.ndarray, bar_rois: Any) -> list[BarROI
                 orientation=orientation,
                 frequency_lp_per_mm=line_pairs_per_mm(group, element),
                 rect=rect,
-                profile_axis=profile_axis,
-                profile=np.mean(crop, axis=collapse_axis),
+                samples=oriented_samples(image, rect, orientation, angle_degrees),
             )
         )
 
     return profiles
 
 
-def _profile_axes(orientation: str) -> tuple[ProfileAxis, int]:
-    if orientation == "X":
-        return "x", 0
-    if orientation == "Y":
-        return "y", 1
-    raise ValueError(f"bar ROI orientation must be X or Y, got {orientation}")
+def oriented_samples(
+    image: np.ndarray, rect: Rect, orientation: str, angle_degrees: float
+) -> OrientedSamples:
+    """Pixels of the element inside rect, with bars rotated by angle_degrees.
+
+    rect is the axis-aligned bounding box of the rotated element. Each pixel is placed by
+    its exact distance across the bars, so nothing is resampled; along the bars only the
+    middle BAR_LENGTH_FRACTION is kept. Positive angles turn the bars clockwise on screen.
+    """
+    if orientation not in ("X", "Y"):
+        raise ValueError(f"bar ROI orientation must be X or Y, got {orientation}")
+    crop = crop_image(image, rect, "bar ROI")
+    angle = np.radians(angle_degrees)
+    cos, sin = np.cos(angle), abs(np.sin(angle))
+    box_width, box_height = rect["x1"] - rect["x0"], rect["y1"] - rect["y0"]
+    box_across, box_along = (
+        (box_width, box_height) if orientation == "X" else (box_height, box_width)
+    )
+    # Invert the bounding box of a rotated across x along rectangle.
+    across = (box_across * cos - box_along * sin) / (cos**2 - sin**2)
+    along = (box_along * cos - box_across * sin) / (cos**2 - sin**2)
+
+    dy, dx = np.mgrid[: crop.shape[0], : crop.shape[1]] + 0.5
+    dx, dy = dx - box_width / 2, dy - box_height / 2
+    u = dx * np.cos(angle) + dy * np.sin(angle)
+    v = -dx * np.sin(angle) + dy * np.cos(angle)
+    u_across, v_along = (u, v) if orientation == "X" else (v, u)
+    keep = (np.abs(u_across) < across / 2) & (np.abs(v_along) < BAR_LENGTH_FRACTION * along / 2)
+    order = np.argsort(u_across[keep])
+    return OrientedSamples(
+        positions=(u_across[keep][order] / across + 0.5),
+        values=crop[keep][order],
+        width_px=float(across),
+    )

@@ -5,31 +5,19 @@ import unittest
 
 import numpy as np
 
-from image_eval.mtf_profiles import BarROIProfile
+from image_eval.mtf_profiles import BarROIProfile, OrientedSamples
 from image_eval.mtf_results import (
     NOISE_FLOOR_FACTOR,
     average_pixels_per_mm_from_fits,
     calculate_mtf_report,
     calculate_mtf_results,
-    line_profile_mtf_points,
     mtf_results_from_fits,
     roi_pixels_per_mm,
 )
-from image_eval.square_wave_fit import _square_wave_design_matrix, fit_bar_roi_profiles
+from image_eval.square_wave_fit import fit_bar_roi_profiles
 
 
 class MTFResultsTests(unittest.TestCase):
-    def test_line_profile_mtf_points_returns_fitted_odd_harmonics(self) -> None:
-        coefficients = np.array([0.5, 0.0, 0.2, 0.0, 0.1, 0.0, 0.04, 0.0])
-        profile = _square_wave_design_matrix(64, cycles=3.21) @ coefficients
-
-        points = line_profile_mtf_points(profile, 16.0)
-
-        self.assertEqual(list(points.keys()), [16.0, 48.0, 80.0])
-        self.assertAlmostEqual(points[16.0], 0.2 * math.pi / 2.0)
-        self.assertAlmostEqual(points[48.0], 0.1 * math.pi * 3 / 2.0)
-        self.assertAlmostEqual(points[80.0], 0.04 * math.pi * 5 / 2.0)
-
     def test_mtf_results_preserve_duplicate_frequency_orientation_rows(self) -> None:
         fitted_profiles = [
             *_fits("X", fundamental_amplitude=0.2, third_amplitude=0.1, fifth_amplitude=0.04),
@@ -212,17 +200,14 @@ def _roi_profile(
     third_amplitude: float = 0.0,
     fifth_amplitude: float = 0.0,
 ) -> BarROIProfile:
-    profile = _square_wave_design_matrix(64, cycles=3.0) @ np.array(
-        [
-            0.5,
-            0.0,
-            fundamental_amplitude,
-            0.0,
-            third_amplitude,
-            0.0,
-            fifth_amplitude,
-            0.0,
-        ]
+    x = (np.arange(64) + 0.5) / 64
+    values = 0.5 + sum(
+        amplitude * np.sin(2 * np.pi * 3.0 * harmonic * x)
+        for harmonic, amplitude in (
+            (1, fundamental_amplitude),
+            (3, third_amplitude),
+            (5, fifth_amplitude),
+        )
     )
     return BarROIProfile(
         group=4,
@@ -230,8 +215,7 @@ def _roi_profile(
         orientation=orientation,
         frequency_lp_per_mm=16,
         rect={"x0": 0, "y0": 0, "x1": 64, "y1": 8},
-        profile_axis="x" if orientation == "X" else "y",
-        profile=profile,
+        samples=OrientedSamples(positions=x, values=values, width_px=64.0),
     )
 
 

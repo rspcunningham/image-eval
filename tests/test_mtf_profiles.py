@@ -6,6 +6,7 @@ import numpy as np
 
 from image_eval.mtf_profiles import (
     bar_roi_profiles,
+    oriented_samples,
     normalize_image_intensity,
     prepare_mtf_profiles,
 )
@@ -99,40 +100,45 @@ class MTFProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "numeric normalization cutoff"):
             normalize_image_intensity(image, normalization_rois, norm=0.5)
 
-    def test_collapses_x_oriented_roi_over_y_axis(self) -> None:
-        image = np.arange(20, dtype=np.float64).reshape(4, 5)
+    def test_samples_x_roi_across_columns_and_trims_bar_ends(self) -> None:
+        image = np.arange(100, dtype=np.float64).reshape(10, 10)
         bar_rois = [
             {
                 "group": 4,
                 "element": 1,
                 "orientation": "X",
-                "rect": {"x0": 1, "y0": 1, "x1": 4, "y1": 3},
+                "rect": {"x0": 2, "y0": 0, "x1": 7, "y1": 10},
             }
         ]
 
-        profiles = bar_roi_profiles(image, bar_rois)
+        (profile,) = bar_roi_profiles(image, bar_rois, 0.0)
 
-        self.assertEqual(len(profiles), 1)
-        self.assertEqual(profiles[0].profile_axis, "x")
-        self.assertEqual(profiles[0].frequency_lp_per_mm, 16)
-        np.testing.assert_allclose(profiles[0].profile, np.array([8.5, 9.5, 10.5]))
+        self.assertEqual(profile.frequency_lp_per_mm, 16)
+        self.assertEqual(profile.samples.width_px, 5)
+        rows = profile.samples.values // 10
+        self.assertEqual(set(rows), {2, 3, 4, 5, 6, 7})  # middle 60% of 10 rows
+        np.testing.assert_allclose(np.unique(profile.samples.positions), [0.1, 0.3, 0.5, 0.7, 0.9])
+        np.testing.assert_allclose(profile.samples.values % 10, profile.samples.positions * 5 + 1.5)
 
-    def test_collapses_y_oriented_roi_over_x_axis(self) -> None:
-        image = np.arange(20, dtype=np.float64).reshape(4, 5)
-        bar_rois = [
-            {
-                "group": 4,
-                "element": 2,
-                "orientation": "Y",
-                "rect": {"x0": 1, "y0": 1, "x1": 4, "y1": 3},
-            }
-        ]
+    def test_samples_y_roi_across_rows(self) -> None:
+        image = np.arange(100, dtype=np.float64).reshape(10, 10)
+        rect = {"x0": 0, "y0": 3, "x1": 10, "y1": 7}
 
-        profiles = bar_roi_profiles(image, bar_rois)
+        samples = oriented_samples(image, rect, "Y", 0.0)
 
-        self.assertEqual(len(profiles), 1)
-        self.assertEqual(profiles[0].profile_axis, "y")
-        np.testing.assert_allclose(profiles[0].profile, np.array([7, 12]))
+        self.assertEqual(samples.width_px, 4)
+        np.testing.assert_allclose(samples.values // 10, samples.positions * 4 + 2.5)
+
+    def test_rotated_positions_follow_the_bars(self) -> None:
+        # Image value = signed distance across bars turned by 2 degrees about the rect centre.
+        angle = np.radians(2.0)
+        y, x = np.mgrid[:60, :60] + 0.5
+        image = (x - 30) * np.cos(angle) + (y - 30) * np.sin(angle)
+
+        samples = oriented_samples(image, {"x0": 0, "y0": 0, "x1": 60, "y1": 60}, "X", 2.0)
+
+        np.testing.assert_allclose(samples.values, (samples.positions - 0.5) * samples.width_px)
+        self.assertAlmostEqual(samples.width_px, 60 / (np.cos(angle) + np.sin(angle)), places=9)
 
     def test_prepare_mtf_profiles_runs_normalization_then_bar_profiles(self) -> None:
         image = np.array(
@@ -163,7 +169,7 @@ class MTFProfileTests(unittest.TestCase):
         self.assertEqual(prepared.normalization.black_mean, 10)
         self.assertEqual(prepared.normalization.white_mean, 30)
         self.assertEqual(len(prepared.bar_profiles), 1)
-        np.testing.assert_allclose(prepared.bar_profiles[0].profile, np.array([0.5, 1.5]))
+        np.testing.assert_allclose(np.sort(prepared.bar_profiles[0].samples.values), [0.5, 1.5])
 
 
 if __name__ == "__main__":

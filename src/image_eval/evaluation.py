@@ -19,6 +19,8 @@ from image_eval.registered_template import project_template_rois
 from image_eval.registration import register_subject_in_base
 from image_eval.square_wave_fit import FittedBarROIProfile
 
+SERIES_BINS_PER_PIXEL = 4
+
 
 @dataclass(frozen=True)
 class EvaluationResult:
@@ -100,6 +102,7 @@ def evaluation_result_to_dict(
         "mtf": {
             "frequency_unit": "cycles/mm",
             "pixels_per_mm": result.mtf_report.pixels_per_mm,
+            "rotation_degrees": result.mtf_report.rotation_degrees,
             "rows": [
                 {
                     "cycles_per_mm": row.cycles_per_mm,
@@ -159,7 +162,7 @@ def _fitted_bar_roi_profile_to_dict(fitted_profile: FittedBarROIProfile) -> dict
         "element": roi.element,
         "orientation": roi.orientation,
         "rect": roi.rect,
-        "profile_axis": roi.profile_axis,
+        "width_px": roi.samples.width_px,
         "frequency_lp_per_mm": roi.frequency_lp_per_mm,
         "pixels_per_mm": roi_pixels_per_mm(fitted_profile),
         "fit": {
@@ -179,16 +182,22 @@ def _fitted_bar_roi_profile_to_dict(fitted_profile: FittedBarROIProfile) -> dict
 
 
 def _fitted_bar_roi_series_to_dict(fitted_profile: FittedBarROIProfile) -> dict[str, Any]:
-    roi = fitted_profile.roi_profile
+    """Observed and fitted values averaged into SERIES_BINS_PER_PIXEL bins across the bars."""
+    samples = fitted_profile.roi_profile.samples
     fit = fitted_profile.fit
-    sample_index = np.arange(len(roi.profile), dtype=np.int64)
-    normalized_position = (sample_index.astype(np.float64) + 0.5) / len(roi.profile)
+    bin_count = max(1, round(samples.width_px * SERIES_BINS_PER_PIXEL))
+    bins = np.minimum((samples.positions * bin_count).astype(np.int64), bin_count - 1)
+    counts = np.bincount(bins, minlength=bin_count)
+    filled = counts > 0
+
+    def binned(values: np.ndarray) -> np.ndarray:
+        return np.bincount(bins, weights=values, minlength=bin_count)[filled] / counts[filled]
+
     return {
-        "sample_index": sample_index,
-        "normalized_position": normalized_position,
-        "observed_profile": roi.profile,
-        "fitted_profile": fit.fitted_profile,
-        "residuals": fit.residuals,
+        "normalized_position": ((np.arange(bin_count) + 0.5) / bin_count)[filled],
+        "observed_profile": binned(samples.values),
+        "fitted_profile": binned(fit.fitted_values),
+        "residuals": binned(fit.residuals),
     }
 
 
@@ -232,16 +241,11 @@ def _validate_registered_normalization_rois(template: dict[str, Any]) -> None:
     if not isinstance(normalization_rois, dict):
         raise ValueError("registered template must contain normalization_rois")
 
-    missing = [
-        name
-        for name in ("black", "white")
-        if normalization_rois.get(name) is None
-    ]
+    missing = [name for name in ("black", "white") if normalization_rois.get(name) is None]
     if missing:
         names = ", ".join(missing)
         raise ValueError(
-            "normalization ROI must be fully visible in registered subject image: "
-            f"{names}"
+            f"normalization ROI must be fully visible in registered subject image: {names}"
         )
 
 
