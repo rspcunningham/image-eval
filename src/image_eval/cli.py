@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import sys
+from importlib.metadata import version
 from typing import Sequence
 
 from image_eval.initialize import add_init_arguments, run_init
@@ -20,6 +21,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="image-eval",
         description="Create ROI templates and evaluate .npy images.",
     )
+    parser.add_argument("--version", action="version", version=version("image-eval"))
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init", help="Create or edit an ROI template.")
