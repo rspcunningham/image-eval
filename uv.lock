@@ -19,7 +19,7 @@ wheels = [
 
 [[package]]
 name = "image-eval"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -36,7 +36,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.4.4" },
-    { name = "opencv-python-headless", specifier = ">=4.13.0.92" },
+    { name = "opencv-python-headless", specifier = ">=4.13.0.92,<5" },
 ]
 
 [package.metadata.requires-dev]
